@@ -1,5 +1,12 @@
 # AnafAutoToken - Automatyczne Odświeżanie Tokenów ANAF
 
+[![.NET](https://img.shields.io/badge/.NET-8.0-blue.svg)](https://dotnet.microsoft.com/) 
+[![C#](https://img.shields.io/badge/C%23-12.0-blue.svg)](https://docs.microsoft.com/en-us/dotnet/csharp/) 
+[![Entity Framework](https://img.shields.io/badge/Entity%20Framework-8.0-green.svg)](https://docs.microsoft.com/en-us/ef/) 
+[![SQLite](https://img.shields.io/badge/SQLite-3.0-blue.svg)](https://www.sqlite.org/) 
+[![Serilog](https://img.shields.io/badge/Serilog-3.0-yellow.svg)](https://serilog.net/) 
+[![Polly](https://img.shields.io/badge/Polly-8.0-orange.svg)](https://github.com/App-vNext/Polly)
+
 ## 📋 Opis
 
 **AnafAutoToken** to wieloplatformowy serwis .NET 8.0, który automatycznie odświeża tokeny dostępu ANAF (Administrația Națională de Administrare Fiscală) przed ich wygaśnięciem. Aplikacja działa jako serwis Windows lub systemd na Linuxie.
