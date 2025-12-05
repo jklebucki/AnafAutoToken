@@ -1,0 +1,123 @@
+# .NET Core
+.prompt/
+bin/
+obj/
+*.user
+*.suo
+*.tmp
+*.log
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.suo
+*.tlb
+*.tlh
+*.tmp_proj
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.log
+*.svclog
+*.scc
+.project
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+
+# .NET Core Tools
+.dotnet/
+tools/
+paket-files/
+.fake/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Logs
+logs/
+*.log
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+anaftoken.db
+
+# Publish directories
+publish/
+bin/Release/
+bin/Debug/
+
+# NuGet packages
+packages/
+
+# Rider
+.idea/
+
+# Backup files
+backups/
+*.bak
+
+# Config files with sensitive data (uncomment if needed)
+# appsettings*.json
+# config.ini
+
+# Test results
+TestResults/
+*.trx
+*.xml
+
+# Coverage reports
+coverage/
+*.opencover.xml
+*.coverage.xml
+
+# Build artifacts
+artifacts/
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Secrets
+secrets.json
+src/AnafAutoToken.Worker/appsettings.secrets.json

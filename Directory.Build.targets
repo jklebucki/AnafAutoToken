@@ -1,0 +1,33 @@
+<Project>
+  <!-- Target that merges appsettings.secrets.json into appsettings.json during build -->
+  <Target Name="MergeSecretsIntoAppsettings" 
+          AfterTargets="Build" 
+          Condition="'$(MSBuildProjectFile)' == 'AnafAutoToken.Worker.csproj' And Exists('$(MSBuildProjectDirectory)\appsettings.secrets.json')">
+    
+    <PropertyGroup>
+      <SecretsFilePath>$(MSBuildProjectDirectory)\appsettings.secrets.json</SecretsFilePath>
+      <TargetAppsettingsPath>$(OutputPath)appsettings.json</TargetAppsettingsPath>
+      <MergeScriptPath>$(MSBuildThisFileDirectory)scripts\merge-secrets.ps1</MergeScriptPath>
+    </PropertyGroup>
+    
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MergeScriptPath)&quot; -SecretsPath &quot;$(SecretsFilePath)&quot; -TargetPath &quot;$(TargetAppsettingsPath)&quot;" 
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="false" />
+  </Target>
+
+  <!-- Target that merges appsettings.secrets.json during publish -->
+  <Target Name="MergeSecretsIntoAppsettingsOnPublish" 
+          AfterTargets="Publish" 
+          Condition="'$(MSBuildProjectFile)' == 'AnafAutoToken.Worker.csproj' And Exists('$(MSBuildProjectDirectory)\appsettings.secrets.json')">
+    
+    <PropertyGroup>
+      <SecretsFilePath>$(MSBuildProjectDirectory)\appsettings.secrets.json</SecretsFilePath>
+      <PublishAppsettingsPath>$(PublishDir)appsettings.json</PublishAppsettingsPath>
+      <MergeScriptPath>$(MSBuildThisFileDirectory)scripts\merge-secrets.ps1</MergeScriptPath>
+    </PropertyGroup>
+    
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MergeScriptPath)&quot; -SecretsPath &quot;$(SecretsFilePath)&quot; -TargetPath &quot;$(PublishAppsettingsPath)&quot;" 
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="false" />
+  </Target>
+</Project>
