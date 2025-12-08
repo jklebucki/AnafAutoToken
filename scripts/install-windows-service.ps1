@@ -33,7 +33,11 @@ $installAsService = Read-Host "Czy zainstalować jako serwis? (Y/N)"
 # ŚCIEŻKI
 # =======================================================
 $configFolder = Read-Host "Podaj ścieżkę do folderu z config.ini"
-$ConfigPath   = Join-Path $configFolder "config.ini"
+$configFilePath = Join-Path $configFolder "config.ini"
+if (-not (Test-Path $configFilePath)) {
+    Write-Warning "Plik config.ini nie istnieje w podanym folderze: $configFolder"
+}
+
 $BackupPath   = Join-Path $configFolder "backups"
 
 $installFolder = Read-Host "Podaj ścieżkę do folderu instalacji"
@@ -63,7 +67,7 @@ dotnet publish `
 -r win-x64 `
 --self-contained true `
 -p:PublishSingleFile=true `
--p:ApplicationIcon="autoanaf.ico" `
+-p:ApplicationIcon="..\..\scripts\autoanaf.ico" `
 -o $publishPath
 
 if ($LASTEXITCODE -ne 0) {
@@ -81,40 +85,6 @@ if (-not (Test-Path $BackupPath)) {
 if (-not (Test-Path $LogPath)) {
     New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
 }
-
-# =======================================================
-# CONFIG.INI
-# =======================================================
-if (-not (Test-Path $ConfigPath)) {
-    "[AccessToken]"           | Out-File $ConfigPath -Encoding UTF8
-    "token=dummy"             | Out-File $ConfigPath -Append -Encoding UTF8
-    "refresh_token=dummy"     | Out-File $ConfigPath -Append -Encoding UTF8
-}
-
-# =======================================================
-# CREDENTIALS
-# =======================================================
-# $username     = Read-Host "Podaj username"
-# $password     = Read-Host "Podaj password"
-# $refreshToken = Read-Host "Podaj refresh_token"
-
-# =======================================================
-# APPSETTINGS.JSON
-# =======================================================
-# $appsettingsPath = Join-Path $publishPath "appsettings.json"
-
-# if (Test-Path $appsettingsPath) {
-
-#     $appsettings = Get-Content $appsettingsPath -Raw | ConvertFrom-Json
-
-#     $appsettings.Anaf.BasicAuth.Username   = $username
-#     $appsettings.Anaf.BasicAuth.Password   = $password
-#     $appsettings.Anaf.InitialRefreshToken  = $refreshToken
-#     $appsettings.Anaf.ConfigFilePath       = $ConfigPath
-#     $appsettings.Anaf.BackupDirectory      = $BackupPath
-
-#     $appsettings | ConvertTo-Json -Depth 10 | Set-Content $appsettingsPath -Encoding UTF8
-# }
 
 # =======================================================
 # INSTALACJA SERWISU
@@ -173,7 +143,6 @@ if ($service) {
 
 Write-Host ""
 Write-Host "Aplikacja : $publishPath"
-Write-Host "Config    : $ConfigPath"
 Write-Host "Backupy   : $BackupPath"
 Write-Host "Logi      : $LogPath"
 Write-Host ""
