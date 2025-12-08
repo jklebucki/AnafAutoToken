@@ -108,23 +108,40 @@ Plik znajduje się w katalogu instalacji:
 
 ```json
 {
-  "AnafSettings": {
-    "TokenEndpoint": "https://api.anaf.ro/prod/FCTEL/rest/token",
+  "Anaf": {
+    "TokenEndpoint": "https://logincert.anaf.ro/anaf-oauth2/v1/token",
     "BasicAuth": {
-      "Username": "your_username",      // ⚠️ WYMAGANE
-      "Password": "your_password"        // ⚠️ WYMAGANE
+      "Username": "<ANAF_BASIC_AUTH_USERNAME>",      // ⚠️ WYMAGANE
+      "Password": "<ANAF_BASIC_AUTH_PASSWORD>"        // ⚠️ WYMAGANE
     },
     "CheckSchedule": {
-      "Hour": 2,                         // Godzina sprawdzenia (0-23)
-      "Minute": 0                        // Minuta sprawdzenia (0-59)
+      "CheckHour": 16,                         // Godzina sprawdzenia (0-23)
+      "CheckMinute": 13                        // Minuta sprawdzenia (0-59)
     },
     "DaysBeforeExpiration": 3,           // Odśwież N dni przed wygaśnięciem
-    "ConfigFilePath": "config.ini",      // Ścieżka do config.ini
-    "BackupDirectory": "backups",        // Katalog backupów
-    "InitialRefreshToken": ""            // Opcjonalny token początkowy
+    "ConfigFilePath": "c:\\tmp\\config.ini",      // Ścieżka do config.ini
+    "BackupDirectory": "c:\\tmp\\backups",        // Katalog backupów
+    "InitialRefreshToken": "<INITIAL_REFRESH_TOKEN>",            // Opcjonalny token początkowy
+    "Email": {
+      "SmtpServer": "<SMTP_SERVER>",
+      "SmtpPort": 465,
+      "Username": "<SMTP_USERNAME>",
+      "Password": "<SMTP_PASSWORD>",
+      "FromAddress": "<FROM_ADDRESS>",
+      "FromName": "ANAF Auto Token Service",
+      "ToAddresses": ["admin@example.com"],
+      "EnableSsl": true
+    }
   },
   "ConnectionStrings": {
-    "DefaultConnection": "Data Source=anaftoken.db"
+    "TokenDatabase": "Data Source=tokens.db"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Microsoft.EntityFrameworkCore": "Warning"
+    }
   }
 }
 ```
@@ -237,8 +254,8 @@ Tabela: `TokenRefreshLogs`
 | `CreatedAt` | DATETIME | Timestamp operacji |
 
 **Lokalizacja:**
-- **Windows:** `bin\Release\net8.0\publish\anaftoken.db`
-- **Linux:** `/opt/anafautotoken/anaftoken.db`
+- **Windows:** `bin\Release\net8.0\publish\tokens.db`
+- **Linux:** `/opt/anafautotoken/tokens.db`
 
 ## 📝 Logi
 
