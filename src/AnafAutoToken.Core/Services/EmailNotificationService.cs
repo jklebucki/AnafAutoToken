@@ -20,7 +20,7 @@ public class EmailNotificationService : IEmailNotificationService
     {
         _emailSettings = settings.Value.Email;
         _logger = logger;
-        _templatesPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, "EmailTemplates");
+        _templatesPath = Path.Combine(AppContext.BaseDirectory, "EmailTemplates");
     }
 
     public async Task SendTokenRefreshSuccessNotificationAsync(

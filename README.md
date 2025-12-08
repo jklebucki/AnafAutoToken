@@ -64,17 +64,55 @@ AnafAutoToken/
 git clone https://github.com/your-repo/AnafAutoToken.git
 cd AnafAutoToken
 
-# 2. Uruchom skrypt instalacyjny
-.\install-windows-service.ps1
+# 2. Uruchom skrypt instalacyjny (jako Administrator)
+.\scripts\install-windows-service.ps1
 ```
 
-Skrypt automatycznie:
-- ✅ Sprawdzi instalację .NET 8.0
-- ✅ Opublikuje aplikację w trybie Release
-- ✅ Utworzy katalogi robocze (backups, logs)
-- ✅ Zainstaluje serwis Windows
-- ✅ Skonfiguruje automatyczny restart po błędzie
-- ✅ Uruchomi serwis
+Uwagi do skryptu `install-windows-service.ps1`:
+- **Interaktywny**: skrypt poprosi o kilka wartości (np. ścieżka do `config.ini`, folder instalacji, decyzja czy zainstalować jako serwis).
+- **Sprawdzanie .NET 8**: przed publikacją skrypt weryfikuje obecność runtime .NET 8.0 i przerwie wykonanie, jeśli brak.
+- **Publikacja**: wykonuje `dotnet publish` projektu `src/AnafAutoToken.Worker` w konfiguracji Release do wskazanego folderu (self-contained, `win-x64`, single file).
+- **Katalogi**: tworzy katalogi pomocnicze (`backups`, `logs`) w katalogu instalacyjnym jeśli nie istnieją.
+- **Instalacja serwisu**: po publikacji (jeżeli wybierzesz instalację jako serwis) skrypt:
+  - tworzy/usunie istniejący serwis jeśli trzeba,
+  - tworzy nową usługę Windows (`New-Service`) z automatycznym startem,
+  - konfiguruje politykę restartu (restart po błędach) oraz uruchamia serwis.
+
+Po uruchomieniu skryptu zobaczysz podsumowanie z lokalizacją aplikacji, katalogiem backupów i logów oraz statusem serwisu.
+
+Jeżeli nie chcesz używać PowerShell do instalacji lub chcesz zarejestrować serwis ręcznie, skrypt publikacyjny umieszcza pliki pomocnicze `.bat` bezpośrednio w folderze publikacji aplikacji (czyli w `<install-folder>`). Po uruchomieniu `install-windows-service.ps1` w katalogu wyjściowym publikacji powinny znajdować się:
+
+- `<install-folder>\\register_service.bat` — rejestruje `AnafAutoToken.Worker.exe` jako usługę Windows. Użycie:
+
+```bat
+REM uruchom z katalogu publikacji (gdzie jest AnafAutoToken.Worker.exe)
+register_service.bat
+```
+
+Ten skrypt ustawia `AnafAutoTokenWorker` jako nazwę usługi, tworzy ją przez `sc create`, dodaje opis i próbuje natychmiast uruchomić usługę.
+
+- `<install-folder>\\unregister_service.bat` — zatrzymuje i usuwa zarejestrowaną usługę. Użycie:
+
+```bat
+REM uruchom z katalogu publikacji (lub jako Administrator)
+unregister_service.bat
+```
+
+Uwaga: oba pliki `.bat` zakładają, że w tym samym katalogu znajduje się `AnafAutoToken.Worker.exe`. Jeśli publikujesz aplikację do innego folderu, skopiuj te pliki do folderu publikacji lub uruchom je z tego folderu.
+
+Krótka ścieżka ręczna (jeśli nie używasz instalatora):
+
+1. Wykonaj `dotnet publish src\\AnafAutoToken.Worker\\AnafAutoToken.Worker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o <install-folder>`
+2. Skopiuj pliki do docelowego katalogu (`<install-folder>`)
+3. Uruchom `register_service.bat` w tym katalogu, aby zarejestrować i uruchomić usługę
+
+Jeśli potrzebujesz tylko uruchamiać aplikację ręcznie (bez instalowania jako serwis), możesz uruchomić plik EXE bezpośrednio:
+
+```powershell
+Start-Process -FilePath "<install-folder>\\AnafAutoToken.Worker.exe"
+```
+
+***
 
 ### Linux (Bash jako root/sudo)
 

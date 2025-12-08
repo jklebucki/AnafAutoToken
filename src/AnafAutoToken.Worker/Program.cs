@@ -7,17 +7,24 @@ using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 // Configure Serilog
+var logPath = Path.Combine(
+    AppContext.BaseDirectory,
+    "logs",
+    "anaf-auto-token-.txt"
+);
+
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .WriteTo.Console()
     .WriteTo.File(
-        path: "logs/anaf-auto-token-.txt",
+        path: logPath,
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
+
 
 try
 {
