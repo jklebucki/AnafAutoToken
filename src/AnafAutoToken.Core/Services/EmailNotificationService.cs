@@ -67,6 +67,27 @@ public class EmailNotificationService : IEmailNotificationService
         await SendEmailAsync(subject, body, cancellationToken);
     }
 
+    public async Task SendTokenNoRefreshNeededNotificationAsync(
+        DateTime expirationDate,
+        int daysUntilRefresh,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsEmailConfigured())
+        {
+            _logger.LogDebug("Email notifications are not configured. Skipping no-refresh-needed notification.");
+            return;
+        }
+
+        var subject = "ANAF Token - Token nie wymaga odświeżenia";
+        var template = LoadTemplate("TokenNoRefreshNeededTemplate");
+        var body = template
+            .Replace("{0}", expirationDate.ToString("yyyy-MM-dd HH:mm:ss"))
+            .Replace("{1}", daysUntilRefresh.ToString())
+            .Replace("{2}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+
+        await SendEmailAsync(subject, body, cancellationToken);
+    }
+
     private bool IsEmailConfigured()
     {
         return _emailSettings != null

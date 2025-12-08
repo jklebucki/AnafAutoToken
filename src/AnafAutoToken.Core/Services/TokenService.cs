@@ -34,6 +34,31 @@ public class TokenService(
                 logger.LogInformation(
                     "Token does not need refresh yet. Expires at: {ExpirationDate}",
                     expirationDate);
+
+                // Calculate days until expiration and days until the system will attempt refresh
+                var now = DateTime.UtcNow;
+                double daysUntilExpirationDouble = expirationDate.HasValue
+                    ? (expirationDate.Value - now).TotalDays
+                    : double.PositiveInfinity;
+
+                // Days until the system will attempt refresh = daysUntilExpiration - DaysBeforeExpirationFromConfig
+                var daysUntilRefresh = (int)Math.Max(0, Math.Ceiling(daysUntilExpirationDouble - _settings.DaysBeforeExpiration));
+
+                // Send no-refresh-needed notification with computed values
+                try
+                {
+                    logger.LogInformation("Sending no refresh needed notification email");
+                    await emailNotificationService.SendTokenNoRefreshNeededNotificationAsync(
+                        expirationDate ?? DateTime.MaxValue,
+                        daysUntilRefresh,
+                        cancellationToken);
+                    logger.LogInformation("No refresh needed notification email sent successfully");
+                }
+                catch (Exception emailEx)
+                {
+                    logger.LogError(emailEx, "Failed to send no refresh needed notification email");
+                }
+
                 return TokenRefreshResult.NoRefreshNeeded(expirationDate ?? DateTime.MaxValue);
             }
 
