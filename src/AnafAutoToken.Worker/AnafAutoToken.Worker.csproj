@@ -25,4 +25,9 @@
     <ProjectReference Include="..\AnafAutoToken.Infrastructure\AnafAutoToken.Infrastructure.csproj" />
     <ProjectReference Include="..\AnafAutoToken.Shared\AnafAutoToken.Shared.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="register_service.bat" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="unregister_service.bat" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
