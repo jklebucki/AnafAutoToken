@@ -37,7 +37,7 @@ $ConfigPath   = Join-Path $configFolder "config.ini"
 $BackupPath   = Join-Path $configFolder "backups"
 
 $installFolder = Read-Host "Podaj ścieżkę do folderu instalacji"
-$publishPath   = Join-Path $installFolder "bin\Release\net8.0\publish"
+$publishPath   = $installFolder 
 $LogPath       = Join-Path $installFolder "logs"
 
 # =======================================================
@@ -63,6 +63,7 @@ dotnet publish `
 -r win-x64 `
 --self-contained true `
 -p:PublishSingleFile=true `
+-p:ApplicationIcon="autoanaf.ico" `
 -o $publishPath
 
 if ($LASTEXITCODE -ne 0) {
@@ -93,27 +94,27 @@ if (-not (Test-Path $ConfigPath)) {
 # =======================================================
 # CREDENTIALS
 # =======================================================
-$username     = Read-Host "Podaj username"
-$password     = Read-Host "Podaj password"
-$refreshToken = Read-Host "Podaj refresh_token"
+# $username     = Read-Host "Podaj username"
+# $password     = Read-Host "Podaj password"
+# $refreshToken = Read-Host "Podaj refresh_token"
 
 # =======================================================
 # APPSETTINGS.JSON
 # =======================================================
-$appsettingsPath = Join-Path $publishPath "appsettings.json"
+# $appsettingsPath = Join-Path $publishPath "appsettings.json"
 
-if (Test-Path $appsettingsPath) {
+# if (Test-Path $appsettingsPath) {
 
-    $appsettings = Get-Content $appsettingsPath -Raw | ConvertFrom-Json
+#     $appsettings = Get-Content $appsettingsPath -Raw | ConvertFrom-Json
 
-    $appsettings.Anaf.BasicAuth.Username   = $username
-    $appsettings.Anaf.BasicAuth.Password   = $password
-    $appsettings.Anaf.InitialRefreshToken  = $refreshToken
-    $appsettings.Anaf.ConfigFilePath       = $ConfigPath
-    $appsettings.Anaf.BackupDirectory      = $BackupPath
+#     $appsettings.Anaf.BasicAuth.Username   = $username
+#     $appsettings.Anaf.BasicAuth.Password   = $password
+#     $appsettings.Anaf.InitialRefreshToken  = $refreshToken
+#     $appsettings.Anaf.ConfigFilePath       = $ConfigPath
+#     $appsettings.Anaf.BackupDirectory      = $BackupPath
 
-    $appsettings | ConvertTo-Json -Depth 10 | Set-Content $appsettingsPath -Encoding UTF8
-}
+#     $appsettings | ConvertTo-Json -Depth 10 | Set-Content $appsettingsPath -Encoding UTF8
+# }
 
 # =======================================================
 # INSTALACJA SERWISU
