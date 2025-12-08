@@ -11,6 +11,7 @@ public class TokenService(
     ITokenValidationService tokenValidationService,
     IAnafApiClient anafApiClient,
     ITokenRepository tokenRepository,
+    IEmailNotificationService emailNotificationService,
     IOptions<AnafSettings> settings,
     ILogger<TokenService> logger) : ITokenService
 {
@@ -50,6 +51,22 @@ public class TokenService(
                 {
                     var errorMessage = "No refresh token available in database or configuration";
                     logger.LogError("No refresh token available. Cannot proceed with token refresh");
+                    
+                    // Send error notification
+                    try
+                    {
+                        logger.LogInformation("Sending error notification email: No refresh token available");
+                        await emailNotificationService.SendTokenRefreshErrorNotificationAsync(
+                            errorMessage,
+                            null,
+                            cancellationToken);
+                        logger.LogInformation("Error notification email sent successfully");
+                    }
+                    catch (Exception emailEx)
+                    {
+                        logger.LogError(emailEx, "Failed to send error notification email for missing refresh token");
+                    }
+                    
                     return TokenRefreshResult.Failure(errorMessage);
                 }
 
@@ -68,6 +85,21 @@ public class TokenService(
             {
                 logger.LogError(ex, "Failed to refresh token via ANAF API");
                 apiException = ex;
+                
+                // Send error notification for API failure
+                try
+                {
+                    logger.LogInformation("Sending error notification email: ANAF API failure");
+                    await emailNotificationService.SendTokenRefreshErrorNotificationAsync(
+                        "Failed to refresh token via ANAF API",
+                        ex,
+                        cancellationToken);
+                    logger.LogInformation("Error notification email sent successfully");
+                }
+                catch (Exception emailEx)
+                {
+                    logger.LogError(emailEx, "Failed to send error notification email for ANAF API failure");
+                }
             }
 
             if (tokenResponse != null)
@@ -102,6 +134,20 @@ public class TokenService(
                     "Token refresh completed successfully. New token expires at: {ExpiresAt}",
                     expiresAt);
 
+                // Send success notification
+                try
+                {
+                    logger.LogInformation("Sending success notification email: Token refreshed successfully");
+                    await emailNotificationService.SendTokenRefreshSuccessNotificationAsync(
+                        expiresAt,
+                        cancellationToken);
+                    logger.LogInformation("Success notification email sent successfully");
+                }
+                catch (Exception emailEx)
+                {
+                    logger.LogError(emailEx, $"Failed to send success notification email. Token was refreshed successfully but email notification failed. {emailEx.InnerException?.Message}");
+                }
+
                 return TokenRefreshResult.Success(expiresAt);
             }
             else
@@ -130,6 +176,22 @@ public class TokenService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error in token check and refresh process");
+            
+            // Send error notification for unexpected errors
+            try
+            {
+                logger.LogInformation("Sending error notification email: Unexpected error in token refresh process");
+                await emailNotificationService.SendTokenRefreshErrorNotificationAsync(
+                    "Unexpected error in token check and refresh process",
+                    ex,
+                    cancellationToken);
+                logger.LogInformation("Error notification email sent successfully");
+            }
+            catch (Exception emailEx)
+            {
+                logger.LogError(emailEx, "Failed to send error notification email for unexpected error");
+            }
+            
             return TokenRefreshResult.Failure(ex.Message, ex);
         }
     }

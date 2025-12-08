@@ -1,8 +1,10 @@
 using AnafAutoToken.Shared.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.IO;
 using System.Net;
 using System.Net.Mail;
+using System.Reflection;
 
 namespace AnafAutoToken.Core.Services;
 
@@ -10,6 +12,7 @@ public class EmailNotificationService : IEmailNotificationService
 {
     private readonly EmailSettings? _emailSettings;
     private readonly ILogger<EmailNotificationService> _logger;
+    private readonly string _templatesPath;
 
     public EmailNotificationService(
         IOptions<AnafSettings> settings,
@@ -17,6 +20,7 @@ public class EmailNotificationService : IEmailNotificationService
     {
         _emailSettings = settings.Value.Email;
         _logger = logger;
+        _templatesPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, "EmailTemplates");
     }
 
     public async Task SendTokenRefreshSuccessNotificationAsync(
@@ -29,17 +33,11 @@ public class EmailNotificationService : IEmailNotificationService
             return;
         }
 
-        var subject = "ANAF Token - Pomyœlna aktualizacja tokena";
-        var body = $@"
-<html>
-<body>
-<h2>Token ANAF zosta³ pomyœlnie zaktualizowany</h2>
-<p>Data i czas aktualizacji: <strong>{DateTime.Now:yyyy-MM-dd HH:mm:ss}</strong></p>
-<p>Nowa data wygaœniêcia tokena: <strong>{newExpirationDate:yyyy-MM-dd HH:mm:ss}</strong></p>
-<hr/>
-<p><em>Wiadomoœæ wygenerowana automatycznie przez ANAF Auto Token Service</em></p>
-</body>
-</html>";
+        var subject = "ANAF Token - PomyÅ›lna aktualizacja tokena";
+        var template = LoadTemplate("TokenRefreshSuccessTemplate");
+        var body = template
+            .Replace("{0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
+            .Replace("{1}", newExpirationDate.ToString("yyyy-MM-dd HH:mm:ss"));
 
         await SendEmailAsync(subject, body, cancellationToken);
     }
@@ -55,28 +53,16 @@ public class EmailNotificationService : IEmailNotificationService
             return;
         }
 
-        var subject = "ANAF Token - B£¥D aktualizacji tokena";
+        var subject = "ANAF Token - BÅ‚Ä…d aktualizacji tokena";
         var exceptionDetails = exception != null
-            ? $@"
-<h3>Szczegó³y wyj¹tku:</h3>
-<pre>{exception.GetType().FullName}: {exception.Message}
-
-{exception.StackTrace}</pre>"
+            ? $"{exception.GetType().FullName}: {exception.Message}{exception.StackTrace}{exception.InnerException?.Message}"
             : string.Empty;
 
-        var body = $@"
-<html>
-<body>
-<h2 style='color: red;'>Wyst¹pi³ b³¹d podczas aktualizacji tokena ANAF</h2>
-<p>Data i czas b³êdu: <strong>{DateTime.Now:yyyy-MM-dd HH:mm:ss}</strong></p>
-<h3>Komunikat b³êdu:</h3>
-<p style='color: red;'>{errorMessage}</p>
-{exceptionDetails}
-<hr/>
-<p><strong>Wymagana jest natychmiastowa interwencja!</strong></p>
-<p><em>Wiadomoœæ wygenerowana automatycznie przez ANAF Auto Token Service</em></p>
-</body>
-</html>";
+        var template = LoadTemplate("TokenRefreshErrorTemplate");
+        var body = template
+            .Replace("{0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
+            .Replace("{1}", errorMessage)
+            .Replace("{2}", exceptionDetails);
 
         await SendEmailAsync(subject, body, cancellationToken);
     }
@@ -92,36 +78,41 @@ public class EmailNotificationService : IEmailNotificationService
     private async Task SendEmailAsync(string subject, string body, CancellationToken cancellationToken)
     {
         if (_emailSettings == null)
-            return;
-
-        try
         {
-            using var smtpClient = new SmtpClient(_emailSettings.SmtpServer, _emailSettings.SmtpPort)
-            {
-                Credentials = new NetworkCredential(_emailSettings.Username, _emailSettings.Password),
-                EnableSsl = _emailSettings.EnableSsl
-            };
-
-            using var mailMessage = new MailMessage
-            {
-                From = new MailAddress(_emailSettings.FromAddress, _emailSettings.FromName),
-                Subject = subject,
-                Body = body,
-                IsBodyHtml = true
-            };
-
-            foreach (var toAddress in _emailSettings.ToAddresses)
-            {
-                mailMessage.To.Add(toAddress);
-            }
-
-            await smtpClient.SendMailAsync(mailMessage, cancellationToken);
-            _logger.LogInformation("Email notification sent successfully. Subject: {Subject}", subject);
+            _logger.LogWarning("Email settings are null. Cannot send email with subject: {Subject}", subject);
+            throw new InvalidOperationException("Email settings are not configured");
         }
-        catch (Exception ex)
+
+        using var smtpClient = new SmtpClient(_emailSettings.SmtpServer, _emailSettings.SmtpPort)
         {
-            _logger.LogError(ex, "Failed to send email notification. Subject: {Subject}", subject);
-            // Don't rethrow - email failure shouldn't stop the service
+            Credentials = new NetworkCredential(_emailSettings.Username, _emailSettings.Password),
+            EnableSsl = _emailSettings.EnableSsl
+        };
+
+        using var mailMessage = new MailMessage
+        {
+            From = new MailAddress(_emailSettings.FromAddress, _emailSettings.FromName),
+            Subject = subject,
+            Body = body,
+            IsBodyHtml = true
+        };
+
+        foreach (var toAddress in _emailSettings.ToAddresses)
+        {
+            mailMessage.To.Add(toAddress);
         }
+
+        await smtpClient.SendMailAsync(mailMessage, cancellationToken);
+        _logger.LogInformation("Email notification sent successfully. Subject: {Subject}", subject);
+    }
+
+    private string LoadTemplate(string templateName)
+    {
+        var path = Path.Combine(_templatesPath, $"{templateName}.html");
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"Template {templateName} not found at {path}.");
+        }
+        return File.ReadAllText(path);
     }
 }
