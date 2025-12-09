@@ -225,9 +225,9 @@ Przykład zawartości `appsettings.secrets.json`:
 
 ### 2. Plik `config.ini`
 
-Plik `config.ini` jest elementem aplikacji pośredniczącej w wymianie informacji ANAF:
-Lokalizacja tego pliku to najcześciej `C:\Program Files\Apache Software Foundation\Tomcat 10.1\webapps\Anaf`
+Plik `config.ini` jest elementem aplikacji pośredniczącej w wymianie informacji ANAF. Lokalizacja tego pliku to najcześciej `C:\Program Files\Apache Software Foundation\Tomcat 10.1\webapps\Anaf`
 
+W pliku `config.ini` pod wsakzaną sekcją system uzupełnia pobrany token. **Uwaga!!!** Wcześniejszy token musi być uzupełniony bo równocześnie dostarcza informację o dacie wygaśniecia.
 ```ini
 [AcessToken]
 ```
