@@ -484,5 +484,5 @@ W razie problemów:
 ---
 
 **Autor:** AnafAutoToken Team  
-**Kontakt:** support@example.com  
-**Repository:** https://github.com/your-repo/AnafAutoToken
+**Kontakt:** j.klebucki@ajksoftware.pl  
+**Repository:** https://github.com/jklebucki/AnafAutoToken
