@@ -225,27 +225,15 @@ Przykład zawartości `appsettings.secrets.json`:
 
 ### 2. Plik `config.ini`
 
-Format pliku INI (uwaga: zachowano oryginalną pisownię `AcessToken` z API):
+Plik `config.ini` jest elementem aplikacji pośredniczącej w wymianie informacji ANAF:
+Lokalizacja tego pliku to najcześciej `C:\Program Files\Apache Software Foundation\Tomcat 10.1\webapps\Anaf`
 
 ```ini
 [AcessToken]
-token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-refresh_token=your_actual_refresh_token
 ```
-
-**Uwaga:** Sekcja `[AcessToken]` jest literą "c" (nie "cc") - zgodnie z oryginalnym API ANAF.
 
 ### 3. Pierwszy token refresh
-
-Możesz podać początkowy `refresh_token` na dwa sposoby:
-
-**Opcja A:** Bezpośrednio w `config.ini`
-```ini
-[AcessToken]
-refresh_token=your_initial_refresh_token
-```
-
-**Opcja B:** W `appsettings.json` (nadpisuje config.ini)
+Musisz podać początkowy `refresh_token` w `appsettings.json` 
 ```json
 "InitialRefreshToken": "your_initial_refresh_token"
 ```
