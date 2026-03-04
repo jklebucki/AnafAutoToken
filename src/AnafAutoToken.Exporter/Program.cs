@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using AnafAutoToken.Infrastructure.Data;
 using AnafAutoToken.Shared.Extensions;
+using AnafAutoToken.Shared.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -380,19 +381,6 @@ internal sealed record CurrentTokenEntry(
     string RefreshToken,
     DateTime StoredExpiresAt,
     DateTime SavedAt);
-
-internal sealed record CurrentTokenExportFile(
-    DateTime ExportedAtUtc,
-    string? SourceDatabase,
-    CurrentTokenPayload CurrentToken);
-
-internal sealed record CurrentTokenPayload(
-    string AccessToken,
-    string RefreshToken,
-    DateTime? AccessTokenExpiresAt,
-    DateTime? StoredExpiresAt,
-    DateTime? SavedAt,
-    string Source);
 
 internal sealed record AllTokensExportFile(
     DateTime ExportedAtUtc,
