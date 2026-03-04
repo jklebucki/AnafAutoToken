@@ -30,6 +30,7 @@ Projekt wykorzystuje **Clean Architecture** z podziałem na warstwy:
 ```
 AnafAutoToken/
 ├── AnafAutoToken.Worker/       # Entry point, BackgroundService, DI
+├── AnafAutoToken.Exporter/     # CLI exporter for JSON token dumps
 ├── AnafAutoToken.Core/         # Business logic, services, interfaces
 ├── AnafAutoToken.Infrastructure/   # EF Core, HTTP client, repositories
 └── AnafAutoToken.Shared/       # Configuration models, extensions
@@ -375,6 +376,42 @@ dotnet AnafAutoToken.Worker.dll
 ```
 
 **Uwaga:** Upewnij się, że `appsettings.json`, `config.ini` i katalogi `backups/`, `logs/` istnieją w katalogu roboczym.
+
+## 📤 Eksport tokenów do JSON
+
+W solucji jest też małe narzędzie CLI `AnafAutoToken.Exporter`, które można zbudować lub opublikować jako osobny plik EXE. Plik EXE należy umieścić w tym samym katalogu co `appsettings.json` i `tokens.db`.
+
+Przykład publikacji:
+
+```powershell
+dotnet publish src\AnafAutoToken.Exporter\AnafAutoToken.Exporter.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+Lub gotowym skryptem:
+
+```powershell
+.\scripts\publish-exporter-single-file.ps1
+```
+
+Z własnym katalogiem docelowym:
+
+```powershell
+.\scripts\publish-exporter-single-file.ps1 -OutputPath "C:\AnafAutoToken"
+```
+
+Skrypt publikuje do katalogu tymczasowego i do folderu docelowego kopiuje tylko finalny `AnafAutoToken.Exporter.exe`.
+
+Dostępne opcje:
+
+```powershell
+AnafAutoToken.Exporter.exe -ect
+AnafAutoToken.Exporter.exe -eat
+AnafAutoToken.Exporter.exe -h
+```
+
+- `-ect` eksportuje aktualny `access_token` i `refresh_token` do timestampowanego pliku JSON
+- `-eat` eksportuje wszystkie poprawnie zapisane pary tokenów z SQLite do timestampowanego pliku JSON
+- `-h` wyświetla pomoc po angielsku
 
 ## 🔧 Troubleshooting
 
