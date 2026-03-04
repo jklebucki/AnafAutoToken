@@ -184,6 +184,7 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
             CurrentToken: new CurrentTokenPayload(
                 latestLog.AccessToken,
                 latestLog.RefreshToken,
+                latestLog.RefreshToken.GetExpirationDate() ?? latestLog.RefreshTokenExpiresAt,
                 latestLog.AccessToken.GetExpirationDate(),
                 latestLog.ExpiresAt,
                 latestLog.CreatedAt,
@@ -212,6 +213,7 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
         CurrentToken: new CurrentTokenPayload(
             accessToken,
             settings.InitialRefreshToken,
+            settings.InitialRefreshToken.GetExpirationDate(),
             accessToken.GetExpirationDate(),
             StoredExpiresAt: null,
             SavedAt: null,

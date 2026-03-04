@@ -18,4 +18,7 @@ public class AnafTokenResponse
 
     [JsonPropertyName("refresh_token")]
     public required string RefreshToken { get; init; }
+
+    [JsonPropertyName("refresh_token_expires_in")]
+    public int? RefreshTokenExpiresIn { get; init; }
 }

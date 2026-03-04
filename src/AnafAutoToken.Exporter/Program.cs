@@ -83,6 +83,7 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
                     CurrentToken: new CurrentTokenPayload(
                         latestToken.AccessToken,
                         latestToken.RefreshToken,
+                        latestToken.RefreshToken.GetExpirationDate() ?? latestToken.RefreshTokenExpiresAt,
                         latestToken.AccessToken.GetExpirationDate(),
                         latestToken.StoredExpiresAt,
                         latestToken.SavedAt,
@@ -105,6 +106,7 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
                     CurrentToken: new CurrentTokenPayload(
                         accessToken,
                         refreshToken,
+                        refreshToken.GetExpirationDate(),
                         accessToken.GetExpirationDate(),
                         StoredExpiresAt: null,
                         SavedAt: null,
@@ -256,6 +258,22 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
     private async Task<CurrentTokenEntry?> GetLatestSuccessfulTokenAsync(string connectionString)
     {
         await using var dbContext = CreateDbContext(connectionString);
+        var hasRefreshTokenExpiresAtColumn = await HasRefreshTokenExpiresAtColumnAsync(connectionString);
+
+        if (hasRefreshTokenExpiresAtColumn)
+        {
+            return await dbContext.TokenRefreshLogs
+                .AsNoTracking()
+                .Where(log => log.IsSuccess && !string.IsNullOrWhiteSpace(log.AccessToken))
+                .OrderByDescending(log => log.CreatedAt)
+                .Select(log => new CurrentTokenEntry(
+                    log.AccessToken,
+                    log.RefreshToken,
+                    log.RefreshTokenExpiresAt,
+                    log.ExpiresAt,
+                    log.CreatedAt))
+                .FirstOrDefaultAsync();
+        }
 
         return await dbContext.TokenRefreshLogs
             .AsNoTracking()
@@ -264,6 +282,7 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
             .Select(log => new CurrentTokenEntry(
                 log.AccessToken,
                 log.RefreshToken,
+                null,
                 log.ExpiresAt,
                 log.CreatedAt))
             .FirstOrDefaultAsync();
@@ -272,6 +291,26 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
     private async Task<List<TokenListItem>> GetAllTokenLogsAsync(string connectionString)
     {
         await using var dbContext = CreateDbContext(connectionString);
+        var hasRefreshTokenExpiresAtColumn = await HasRefreshTokenExpiresAtColumnAsync(connectionString);
+
+        if (hasRefreshTokenExpiresAtColumn)
+        {
+            return await dbContext.TokenRefreshLogs
+                .AsNoTracking()
+                .OrderByDescending(log => log.CreatedAt)
+                .Select(log => new TokenListItem(
+                    log.Id,
+                    log.AccessToken,
+                    log.RefreshToken,
+                    log.RefreshToken.GetExpirationDate() ?? log.RefreshTokenExpiresAt,
+                    string.IsNullOrWhiteSpace(log.AccessToken) ? null : log.AccessToken.GetExpirationDate(),
+                    log.ExpiresAt,
+                    log.CreatedAt,
+                    log.IsSuccess,
+                    log.ErrorMessage,
+                    log.ResponseStatusCode))
+                .ToListAsync();
+        }
 
         return await dbContext.TokenRefreshLogs
             .AsNoTracking()
@@ -280,6 +319,7 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
                 log.Id,
                 log.AccessToken,
                 log.RefreshToken,
+                log.RefreshToken.GetExpirationDate(),
                 string.IsNullOrWhiteSpace(log.AccessToken) ? null : log.AccessToken.GetExpirationDate(),
                 log.ExpiresAt,
                 log.CreatedAt,
@@ -296,6 +336,27 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
             .Options;
 
         return new AnafDbContext(options);
+    }
+
+    private async Task<bool> HasRefreshTokenExpiresAtColumnAsync(string connectionString)
+    {
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info('TokenRefreshLogs');";
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            if (string.Equals(reader.GetString(1), "RefreshTokenExpiresAt", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private string? TryReadAccessTokenFromConfiguredFile(IConfiguration configuration)
@@ -379,6 +440,7 @@ internal sealed record DatabaseSettings(string ConnectionString, string Database
 internal sealed record CurrentTokenEntry(
     string AccessToken,
     string RefreshToken,
+    DateTime? RefreshTokenExpiresAt,
     DateTime StoredExpiresAt,
     DateTime SavedAt);
 
@@ -392,6 +454,7 @@ internal sealed record TokenListItem(
     int Id,
     string AccessToken,
     string RefreshToken,
+    DateTime? RefreshTokenExpiresAt,
     DateTime? AccessTokenExpiresAt,
     DateTime StoredExpiresAt,
     DateTime SavedAt,

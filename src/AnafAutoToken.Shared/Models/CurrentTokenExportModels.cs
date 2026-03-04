@@ -8,6 +8,7 @@ public sealed record CurrentTokenExportFile(
 public sealed record CurrentTokenPayload(
     string AccessToken,
     string RefreshToken,
+    DateTime? RefreshTokenExpiresAt,
     DateTime? AccessTokenExpiresAt,
     DateTime? StoredExpiresAt,
     DateTime? SavedAt,

@@ -26,6 +26,8 @@ public class AnafDbContext(DbContextOptions<AnafDbContext> options) : DbContext(
             entity.Property(e => e.ExpiresAt)
                 .IsRequired();
 
+            entity.Property(e => e.RefreshTokenExpiresAt);
+
             entity.Property(e => e.CreatedAt)
                 .IsRequired();
 

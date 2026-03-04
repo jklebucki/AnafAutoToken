@@ -13,6 +13,7 @@ public class TokenRefreshLog
     public required string RefreshToken { get; set; }
     public required string AccessToken { get; set; }
     public required DateTime ExpiresAt { get; set; }
+    public DateTime? RefreshTokenExpiresAt { get; set; }
     public required DateTime CreatedAt { get; set; }
     public required bool IsSuccess { get; set; }
     public string? ErrorMessage { get; set; }

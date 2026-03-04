@@ -1,6 +1,7 @@
 using AnafAutoToken.Core.Interfaces;
 using AnafAutoToken.Core.Models;
 using AnafAutoToken.Shared.Configuration;
+using AnafAutoToken.Shared.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -139,8 +140,15 @@ public class TokenService(
                     cancellationToken);
                 logger.LogInformation("Config file updated with new access token");
 
-                // Calculate expiration date
-                var expiresAt = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn);
+                // Calculate expiration dates
+                var createdAt = DateTime.UtcNow;
+                var expiresAt = createdAt.AddSeconds(tokenResponse.ExpiresIn);
+                DateTime? refreshTokenExpiresAt = tokenResponse.RefreshToken.GetExpirationDate();
+
+                if (!refreshTokenExpiresAt.HasValue && tokenResponse.RefreshTokenExpiresIn.HasValue)
+                {
+                    refreshTokenExpiresAt = createdAt.AddSeconds(tokenResponse.RefreshTokenExpiresIn.Value);
+                }
 
                 // Save to database
                 var log = new TokenRefreshLog
@@ -148,7 +156,8 @@ public class TokenService(
                     RefreshToken = tokenResponse.RefreshToken,
                     AccessToken = tokenResponse.AccessToken,
                     ExpiresAt = expiresAt,
-                    CreatedAt = DateTime.UtcNow,
+                    RefreshTokenExpiresAt = refreshTokenExpiresAt,
+                    CreatedAt = createdAt,
                     IsSuccess = true,
                     ResponseStatusCode = 200
                 };
@@ -185,6 +194,7 @@ public class TokenService(
                     RefreshToken = refreshToken,
                     AccessToken = string.Empty,
                     ExpiresAt = DateTime.UtcNow,
+                    RefreshTokenExpiresAt = refreshToken.GetExpirationDate(),
                     CreatedAt = DateTime.UtcNow,
                     IsSuccess = false,
                     ErrorMessage = errorMessage,
