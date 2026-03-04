@@ -24,6 +24,7 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
         if (args.Length == 0)
         {
             WriteHelp();
+            WaitForKeyPressIfInteractive();
             return 0;
         }
 
@@ -353,6 +354,19 @@ internal sealed partial class ExportApplication(string baseDirectory, TextWriter
         output.WriteLine($"  {ExportCurrentTokenOption}  Export the current access token and refresh token to JSON.");
         output.WriteLine($"  {ExportAllTokensOption}  Export all successfully saved token pairs from SQLite to JSON.");
         output.WriteLine($"  {HelpOption}    Show this help message in English.");
+    }
+
+    private void WaitForKeyPressIfInteractive()
+    {
+        if (Console.IsInputRedirected || Console.IsOutputRedirected)
+        {
+            return;
+        }
+
+        output.WriteLine();
+        output.Write("Press any key to close...");
+        Console.ReadKey(intercept: true);
+        output.WriteLine();
     }
 
     [GeneratedRegex(@"\[AcessToken\]\s*\r?\n(.+?)(?=\r?\n\[|$)", RegexOptions.Singleline)]
