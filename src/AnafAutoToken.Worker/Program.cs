@@ -184,7 +184,7 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
             CurrentToken: new CurrentTokenPayload(
                 latestLog.AccessToken,
                 latestLog.RefreshToken,
-                latestLog.RefreshToken.GetExpirationDate() ?? latestLog.RefreshTokenExpiresAt,
+                latestLog.RefreshToken.GetExpirationDate() ?? latestLog.RefreshTokenExpiresAt ?? latestLog.CreatedAt.AddDays(365),
                 latestLog.AccessToken.GetExpirationDate(),
                 latestLog.ExpiresAt,
                 latestLog.CreatedAt,

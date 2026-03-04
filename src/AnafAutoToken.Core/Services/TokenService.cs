@@ -150,6 +150,11 @@ public class TokenService(
                     refreshTokenExpiresAt = createdAt.AddSeconds(tokenResponse.RefreshTokenExpiresIn.Value);
                 }
 
+                if (!refreshTokenExpiresAt.HasValue)
+                {
+                    refreshTokenExpiresAt = createdAt.AddDays(365);
+                }
+
                 // Save to database
                 var log = new TokenRefreshLog
                 {
