@@ -36,6 +36,7 @@ internal sealed partial class MainForm : Form
         _tabs.Dock = DockStyle.Fill;
         _tabs.Padding = new Point(12, 6);
         _tabs.TabPages.Add(BuildDatabaseTab());
+        _tabs.TabPages.Add(BuildServiceTab());
         _tabs.TabPages.Add(BuildSettingsTab());
         _tabs.TabPages.Add(BuildRawJsonTab());
 
@@ -125,10 +126,23 @@ internal sealed partial class MainForm : Form
                 isWarning: true);
         }
 
+        InitialiseServiceTab();
+
         if (File.Exists(_databasePathBox.Text))
         {
             await ReloadDatabaseAsync();
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _serviceStatusTimer.Stop();
+            _serviceStatusTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 
     private static string ResolveDefaultSettingsPath()
@@ -180,6 +194,7 @@ internal sealed partial class MainForm : Form
             ApplyDocumentToSettingsForm();
             RefreshRawJsonView();
             ApplyConfiguredDatabasePath();
+            ApplyDefaultServiceBinaryPath();
             SetStatus($"Wczytano konfigurację z {path}.");
         }
         catch (Exception ex)
