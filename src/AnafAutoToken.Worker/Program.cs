@@ -70,6 +70,7 @@ try
     builder.Services.AddInfrastructure(connectionString);
 
     // Add Worker
+    builder.Services.AddSingleton<TokenRefreshCoordinator>();
     builder.Services.AddHostedService<Worker>();
 
     // Configure Windows Service (optional)
@@ -117,6 +118,62 @@ try
             return Results.Problem(
                 title: "Token query failed.",
                 detail: "Failed to retrieve current tokens.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    });
+
+    app.MapPost("/api/tokens/refresh", async (
+        TokenRefreshCoordinator coordinator,
+        IServiceScopeFactory serviceScopeFactory,
+        CancellationToken cancellationToken) =>
+    {
+        Log.Information("Manual token refresh requested through the API");
+
+        var startedAtUtc = DateTime.UtcNow;
+
+        try
+        {
+            var result = await coordinator.TryRunAsync(
+                async token =>
+                {
+                    using var scope = serviceScopeFactory.CreateScope();
+                    var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
+                    return await tokenService.CheckAndRefreshTokenIfNeededAsync(token);
+                },
+                cancellationToken);
+
+            if (result is null)
+            {
+                Log.Warning("Manual token refresh rejected - another refresh is already running");
+
+                return Results.Problem(
+                    title: "Odświeżanie tokenu już trwa.",
+                    detail: "Inna operacja odświeżania jest w toku. Spróbuj ponownie za chwilę.",
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
+            Log.Information(
+                "Manual token refresh finished. Success: {IsSuccess}, refreshed: {TokenWasRefreshed}",
+                result.IsSuccess,
+                result.TokenWasRefreshed);
+
+            return Results.Json(
+                new ManualTokenRefreshResponse(
+                    result.IsSuccess,
+                    result.TokenWasRefreshed,
+                    result.NewExpirationDate,
+                    result.ErrorMessage,
+                    startedAtUtc,
+                    DateTime.UtcNow),
+                apiJsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Manual token refresh failed");
+
+            return Results.Problem(
+                title: "Odświeżanie tokenu nie powiodło się.",
+                detail: ex.Message,
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     });

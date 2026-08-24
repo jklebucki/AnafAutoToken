@@ -7,6 +7,7 @@ namespace AnafAutoToken.Worker;
 public class Worker(
     ILogger<Worker> logger,
     IServiceScopeFactory serviceScopeFactory,
+    TokenRefreshCoordinator refreshCoordinator,
     IOptions<AnafSettings> settings) : BackgroundService
 {
     private readonly AnafSettings _settings = settings.Value;
@@ -76,9 +77,20 @@ public class Worker(
                 _settings.CheckSchedule.CheckHour,
                 _settings.CheckSchedule.CheckMinute);
 
-            using var scope = serviceScopeFactory.CreateScope();
-            var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
-            await tokenService.CheckAndRefreshTokenIfNeededAsync(cancellationToken);
+            if (refreshCoordinator.IsBusy)
+            {
+                logger.LogInformation("A manual token refresh is in progress - waiting for it to finish");
+            }
+
+            // Przez koordynator, żeby nie wejść w paradę ręcznemu odświeżeniu z menedżera.
+            await refreshCoordinator.RunAsync(
+                async token =>
+                {
+                    using var scope = serviceScopeFactory.CreateScope();
+                    var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
+                    await tokenService.CheckAndRefreshTokenIfNeededAsync(token);
+                },
+                cancellationToken);
         }
         catch (Exception ex)
         {
