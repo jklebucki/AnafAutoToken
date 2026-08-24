@@ -363,8 +363,9 @@ internal sealed partial class MainForm
     }
 
     /// <summary>
-    /// Worker zwykle leży obok pliku appsettings.json, którym operuje menedżer.
-    /// Ścieżka wpisana ręcznie przez operatora nie jest nadpisywana.
+    /// Worker leży obok menedżera, a nie obok pliku ustawień - binaria i katalog danych to
+    /// dwie różne lokalizacje. Katalog danych trzyma wyłącznie appsettings.json, bazę,
+    /// kopie zapasowe i logi. Ścieżka wpisana ręcznie przez operatora nie jest nadpisywana.
     /// </summary>
     private void ApplyDefaultServiceBinaryPath()
     {
@@ -373,8 +374,19 @@ internal sealed partial class MainForm
             return;
         }
 
-        var directory = SafeGetDirectory(_settingsPathBox.Text) ?? AppContext.BaseDirectory;
-        _serviceBinaryPathBox.Text = Path.Combine(directory, WorkerExecutableName);
+        _serviceBinaryPathBox.Text = ResolveDefaultWorkerExecutable();
+    }
+
+    private static string ResolveDefaultWorkerExecutable()
+    {
+        string[] candidates =
+        [
+            Path.Combine(AppContext.BaseDirectory, WorkerExecutableName),
+            // Skrót z ustawionym innym katalogiem startowym.
+            Path.Combine(Directory.GetCurrentDirectory(), WorkerExecutableName)
+        ];
+
+        return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
     }
 
     private void RefreshServiceStatus()
