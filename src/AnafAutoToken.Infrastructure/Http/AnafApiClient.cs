@@ -3,8 +3,8 @@ using AnafAutoToken.Core.Models;
 using AnafAutoToken.Shared.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 
 namespace AnafAutoToken.Infrastructure.Http;
 
@@ -13,6 +13,11 @@ public class AnafApiClient(
     IOptions<AnafSettings> settings,
     ILogger<AnafApiClient> logger) : IAnafApiClient
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly AnafSettings _settings = settings.Value;
 
     public async Task<AnafTokenResponse> RefreshTokenAsync(
@@ -51,13 +56,30 @@ public class AnafApiClient(
                     $"Token refresh failed with status {response.StatusCode}: {errorContent}");
             }
 
-            var tokenResponse = await response.Content.ReadFromJsonAsync<AnafTokenResponse>(cancellationToken);
+            // Czytamy body jako tekst, a nie prosto do modelu - surowa odpowiedź jest
+            // potem archiwizowana na dysku jako zabezpieczenie na wypadek problemów
+            // z zapisem do bazy albo do config.ini.
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            AnafTokenResponse? tokenResponse;
+
+            try
+            {
+                tokenResponse = JsonSerializer.Deserialize<AnafTokenResponse>(rawJson, JsonOptions);
+            }
+            catch (JsonException ex)
+            {
+                logger.LogError(ex, "Failed to deserialize token response");
+                throw new InvalidOperationException("Failed to deserialize token response", ex);
+            }
 
             if (tokenResponse == null)
             {
                 logger.LogError("Failed to deserialize token response");
                 throw new InvalidOperationException("Failed to deserialize token response");
             }
+
+            tokenResponse.RawJson = rawJson;
 
             if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
             {

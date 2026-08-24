@@ -13,6 +13,7 @@ public class TokenService(
     IAnafApiClient anafApiClient,
     ITokenRepository tokenRepository,
     IEmailNotificationService emailNotificationService,
+    IRefreshResponseArchive refreshResponseArchive,
     IOptions<AnafSettings> settings,
     ILogger<TokenService> logger) : ITokenService
 {
@@ -182,6 +183,12 @@ public class TokenService(
             {
                 var createdAt = DateTime.UtcNow;
                 var expiresAt = createdAt.AddSeconds(tokenResponse.ExpiresIn);
+
+                // Archiwum surowej odpowiedzi idzie pierwsze - to najprostszy zapis w całym
+                // przebiegu, więc najmniej może pójść nie tak. Gdyby padła baza albo
+                // config.ini, rotowany refresh token nadal będzie na dysku.
+                await ArchiveRefreshResponseAsync(tokenResponse.RawJson, createdAt, cancellationToken);
+
                 var newRefreshToken = ResolveNewRefreshToken(tokenResponse.RefreshToken, refreshToken);
                 var refreshTokenExpiresAt = ResolveRefreshTokenExpiration(
                     newRefreshToken,
@@ -320,6 +327,25 @@ public class TokenService(
             await RecordCheckAsync(trigger, TokenCheckOutcome.Failed, null, null, ex.Message, cancellationToken);
 
             return TokenRefreshResult.Failure(ex.Message, ex);
+        }
+    }
+
+    /// <summary>
+    /// Nieudany zapis archiwum nie może przewrócić odświeżenia - token jest ważniejszy
+    /// niż jego kopia na dysku.
+    /// </summary>
+    private async Task ArchiveRefreshResponseAsync(
+        string? rawResponse,
+        DateTime refreshedAt,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await refreshResponseArchive.SaveAsync(rawResponse, refreshedAt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to archive the ANAF refresh response");
         }
     }
 

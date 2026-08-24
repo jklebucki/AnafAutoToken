@@ -25,4 +25,12 @@ public class AnafTokenResponse
 
     [JsonPropertyName("refresh_token_expires_in")]
     public int? RefreshTokenExpiresIn { get; init; }
+
+    /// <summary>
+    /// Surowe body odpowiedzi ANAF, dokładnie tak jak przyszło. Trzymamy je, żeby móc
+    /// zarchiwizować pełną odpowiedź na dysku - także pola, których nie modelujemy.
+    /// Nie jest częścią kontraktu JSON, stąd JsonIgnore.
+    /// </summary>
+    [JsonIgnore]
+    public string RawJson { get; set; } = string.Empty;
 }
