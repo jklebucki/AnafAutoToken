@@ -70,10 +70,11 @@ niezależnym od katalogu instalacji i od katalogu roboczego procesu:
 
 ```
 C:\ProgramData\AnafAutoToken\
-├── appsettings.json     konfiguracja robocza - jedyne źródło prawdy
-├── tokens.db            baza SQLite (historia tokenów i przebiegów)
-├── backups\             kopie config.ini
-└── logs\                logi Serilog
+├── appsettings.json                          konfiguracja robocza - jedyne źródło prawdy
+├── tokens.db                                 baza SQLite (historia tokenów i przebiegów)
+├── refresh_response_2026-08-24_23-08-19.json surowe odpowiedzi ANAF z udanych odświeżeń
+├── backups\                                  kopie config.ini
+└── logs\                                     logi Serilog
 ```
 
 Katalog można przenieść zmienną środowiskową `ANAFAUTOTOKEN_DATA_DIR`.
@@ -442,6 +443,20 @@ ANAF zwraca nowy `refresh_token` przy każdym odświeżeniu. Obowiązują nastę
 3. Jeśli ANAF nie zwróci pola `refresh_token`, zapisywany jest dotychczasowy token
    (z ostrzeżeniem w logu) zamiast odrzucania całego odświeżenia.
 
+### Archiwum odpowiedzi ANAF
+
+Po **każdym udanym odświeżeniu** surowa odpowiedź ANAF ląduje w katalogu danych jako
+`refresh_response_yyyy-MM-dd_HH-mm-ss.json` (znacznik czasu lokalny, jak w nazwach kopii
+`config.ini`). Zapis idzie **przed** bazą i przed `config.ini` - to najprostsza operacja
+w całym przebiegu, więc najmniej może pójść nie tak.
+
+- plik zawiera body dokładnie tak, jak przyszło z ANAF, **bez reformatowania** - także pola,
+  których aplikacja nie modeluje
+- gdyby padł zapis do bazy albo do `config.ini`, rotowany refresh token nadal jest na dysku
+- nieudany zapis archiwum nie przerywa odświeżenia - jest tylko wpis `ERROR` w logu
+- pliki z tej samej sekundy nie nadpisują się nawzajem (sufiks `_2`, `_3`, …)
+- nie ma automatycznego czyszczenia; przy odświeżeniu co ~87 dni to kilka plików rocznie
+
 **Lokalizacja:** [katalog danych](#-katalog-danych)
 - **Windows:** `C:\ProgramData\AnafAutoToken\tokens.db`
 - **Linux:** `/var/lib/anafautotoken/tokens.db`
@@ -741,10 +756,15 @@ backups/
 
 ### Zalecenia:
 
-1. **Ochrona credentials:**
-   - Ustaw uprawnienia do `appsettings.json`:
-     - **Windows:** Tylko Administrator i SYSTEM
-     - **Linux:** `chmod 600 /opt/anafautotoken/appsettings.json`
+1. **Ochrona katalogu danych:**
+   - `C:\ProgramData\AnafAutoToken\` domyślnie jest **czytelny dla każdego użytkownika**
+     maszyny, a leżą tam w jawnej postaci: `appsettings.json` (hasła SMTP i Basic Auth),
+     `tokens.db` (access i refresh token) oraz `refresh_response_*.json` (pełne odpowiedzi ANAF)
+   - Ogranicz dostęp do konta usługi i administratorów:
+     ```powershell
+     icacls "C:\ProgramData\AnafAutoToken" /inheritance:r /grant "SYSTEM:(OI)(CI)F" /grant "Administratorzy:(OI)(CI)F"
+     ```
+   - **Linux:** `chmod 700 /var/lib/anafautotoken`
 
 2. **Refresh token:**
    - Przechowuj bezpiecznie poza repozytorium
