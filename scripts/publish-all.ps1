@@ -7,12 +7,18 @@
     samowystarczalne pliki single file (runtime .NET 10 w środku). Na maszynie
     docelowej nie trzeba instalować ani SDK, ani runtime'u .NET.
 
+    Wszystko ląduje w jednym katalogu - dokładnie tak, jak ma wyglądać katalog
+    instalacyjny serwisu.
+
     Menedżer jest aplikacją WinForms, więc powstaje tylko dla runtime'ów win-*.
     Dla linux-x64 / linux-arm64 zostanie pominięty z ostrzeżeniem.
 
 .PARAMETER OutputPath
-    Katalog nadrzędny. Każdy program trafia do własnego podkatalogu:
-    <OutputPath>\AnafAutoToken.Worker, ...Exporter, ...Manager
+    Jeden wspólny katalog na wszystkie programy. Trafiają do niego obok siebie:
+    AnafAutoToken.Worker.exe, AnafAutoToken.Exporter.exe, AnafAutoToken.Manager.exe
+    oraz pliki towarzyszące workera (appsettings.json, EmailTemplates\, *.bat).
+    Taki układ jest tym, którego oczekują eksporter i menedżer - szukają
+    appsettings.json i tokens.db obok siebie.
 
 .PARAMETER SkipTests
     Pomija uruchomienie testów jednostkowych przed publikacją.
@@ -139,18 +145,19 @@ foreach ($target in $targets) {
             Program = $target.AssemblyName
             Status  = "pominięty ($Runtime)"
             Rozmiar = "-"
-            Sciezka = "-"
+            Plik    = "-"
         }
         continue
     }
 
-    $targetOutputPath = Join-Path $rootOutputPath $target.AssemblyName
-
+    # Wszystkie trzy programy do tego samego katalogu. Worker idzie pierwszy, bo tylko on
+    # wnosi pliki towarzyszące; pozostałe kopiują wyłącznie swój plik wykonywalny, więc
+    # nie ma szans na nadpisanie appsettings.json ani katalogu EmailTemplates.
     & $publishSingleFile `
         -Project $target.Project `
         -Configuration $Configuration `
         -Runtime $Runtime `
-        -OutputPath $targetOutputPath
+        -OutputPath $rootOutputPath
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Błąd publikacji projektu $($target.AssemblyName)."
@@ -158,13 +165,13 @@ foreach ($target in $targets) {
     }
 
     $executableName = if ($isWindowsRuntime) { "$($target.AssemblyName).exe" } else { $target.AssemblyName }
-    $executablePath = Join-Path $targetOutputPath $executableName
+    $executablePath = Join-Path $rootOutputPath $executableName
 
     $results += [pscustomobject]@{
         Program = $target.AssemblyName
         Status  = "OK"
         Rozmiar = "$([math]::Round((Get-Item $executablePath).Length / 1MB, 1)) MB"
-        Sciezka = $executablePath
+        Plik    = $executableName
     }
 }
 
@@ -177,15 +184,22 @@ Write-Host "ZAKOŃCZONO" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
+Write-Host "Katalog: $rootOutputPath" -ForegroundColor Cyan
 $results | Format-Table -AutoSize
 
+Write-Host "Zawartość katalogu:"
+Get-ChildItem -Path $rootOutputPath | Sort-Object PSIsContainer, Name | ForEach-Object {
+    Write-Host "  $($_.Name)$(if ($_.PSIsContainer) { [char]92 })"
+}
+
+Write-Host ""
 Write-Host "Runtime .NET 10 jest wbudowany w każdy plik wykonywalny." -ForegroundColor Green
 Write-Host "Maszyna docelowa nie wymaga instalacji SDK ani runtime'u .NET." -ForegroundColor Green
 Write-Host ""
 Write-Host "Instalacja usługi z gotowej paczki (bez SDK na hoście):"
 
 if ($isWindowsRuntime) {
-    Write-Host "  .\scripts\install-windows-service.ps1 -ArtifactPath `"$(Join-Path $rootOutputPath 'AnafAutoToken.Worker')`""
+    Write-Host "  .\scripts\install-windows-service.ps1 -ArtifactPath `"$rootOutputPath`""
 }
 else {
     Write-Host "  sudo ./scripts/install-linux-service.sh --artifact <ścieżka do skopiowanej paczki>"
