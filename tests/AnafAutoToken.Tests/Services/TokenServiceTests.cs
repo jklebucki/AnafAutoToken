@@ -16,12 +16,14 @@ public class TokenServiceTests
     private const string RotatedRefreshToken = "rotated-refresh-token";
     private const string CurrentAccessToken = "current-access-token";
     private const string NewAccessToken = "new-access-token";
+    private const string RawAnafResponse = """{"access_token":"new-access-token","refresh_token":"rotated-refresh-token"}""";
 
     private readonly Mock<IConfigFileService> _configFileServiceMock = new();
     private readonly Mock<ITokenValidationService> _tokenValidationServiceMock = new();
     private readonly Mock<IAnafApiClient> _anafApiClientMock = new();
     private readonly Mock<ITokenRepository> _tokenRepositoryMock = new();
     private readonly Mock<IEmailNotificationService> _emailNotificationServiceMock = new();
+    private readonly Mock<IRefreshResponseArchive> _refreshResponseArchiveMock = new();
     private readonly List<string> _callOrder = [];
     private readonly List<TokenCheckLog> _checkLogs = [];
 
@@ -252,6 +254,67 @@ public class TokenServiceTests
     }
 
     [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenRefreshSucceeds_ArchivesTheRawAnafResponse()
+    {
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+        SetupApiResponse(RotatedRefreshToken);
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        _refreshResponseArchiveMock.Verify(
+            x => x.SaveAsync(RawAnafResponse, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_ArchivesBeforeTouchingTheDatabase()
+    {
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+        SetupApiResponse(RotatedRefreshToken);
+
+        _refreshResponseArchiveMock
+            .Setup(x => x.SaveAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("archiwum.json")
+            .Callback(() => _callOrder.Add("archive"));
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        _callOrder.Should().Equal("archive", "database-save", "config-backup", "config-update");
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenArchiveFails_StillRefreshes()
+    {
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+        SetupApiResponse(RotatedRefreshToken);
+
+        _refreshResponseArchiveMock
+            .Setup(x => x.SaveAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UnauthorizedAccessException("brak dostepu do katalogu"));
+
+        var result = await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        result.IsSuccess.Should().BeTrue("kopia na dysku nie moze byc wazniejsza od samego tokenu");
+        CapturedSuccessfulLog().RefreshToken.Should().Be(RotatedRefreshToken);
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenRefreshIsNotNeeded_ArchivesNothing()
+    {
+        _tokenValidationServiceMock
+            .Setup(x => x.ShouldRefreshToken(It.IsAny<string>(), It.IsAny<int>()))
+            .Returns(false);
+
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        _refreshResponseArchiveMock.Verify(
+            x => x.SaveAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task CheckAndRefreshTokenIfNeededAsync_WhenRefreshIsNotNeeded_StillRecordsTheCheck()
     {
         _tokenValidationServiceMock
@@ -335,6 +398,7 @@ public class TokenServiceTests
         _anafApiClientMock.Object,
         _tokenRepositoryMock.Object,
         _emailNotificationServiceMock.Object,
+        _refreshResponseArchiveMock.Object,
         Options.Create(CreateSettings()),
         Mock.Of<ILogger<TokenService>>());
 
@@ -362,7 +426,8 @@ public class TokenServiceTests
                 TokenType = "Bearer",
                 Scope = "read",
                 RefreshToken = refreshToken,
-                RefreshTokenExpiresIn = refreshTokenExpiresIn
+                RefreshTokenExpiresIn = refreshTokenExpiresIn,
+                RawJson = RawAnafResponse
             });
 
     private List<TokenRefreshLog> CapturedLogs()

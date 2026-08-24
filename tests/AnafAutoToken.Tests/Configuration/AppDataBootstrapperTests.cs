@@ -5,6 +5,7 @@ using FluentAssertions;
 
 namespace AnafAutoToken.Tests.Configuration;
 
+[Collection(DataDirectoryCollection.Name)]
 public class AppDataBootstrapperTests : IDisposable
 {
     public AppDataBootstrapperTests() => Cleanup();
