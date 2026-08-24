@@ -512,6 +512,21 @@ Po starcie program szuka `appsettings.json` obok siebie, a ścieżkę do bazy bi
 - kopiowanie do schowka: sam token, zaznaczony wpis jako JSON, cała historia jako JSON
 - zapis całej historii do pliku JSON
 
+**Zakładka „Serwis systemowy”** (tylko Windows)
+- stan usługi odświeżany **co 5 sekund**: `DZIAŁA` / `ZATRZYMANY` / `NIE ZAREJESTROWANY`
+  (plus stany przejściowe), z nazwą wyświetlaną, typem startu, ścieżką z rejestru
+  (`HKLM\SYSTEM\CurrentControlSet\Services\<nazwa>\ImagePath`) i godziną ostatniego odczytu
+- **Zarejestruj** - zakłada usługę (`sc create`, start automatyczny) wraz z opisem i polityką
+  restartu 3 × co 60 s, dokładnie taką samą jak w `install-windows-service.ps1`
+- **Wyrejestruj** - zatrzymuje usługę, jeśli działa, i ją usuwa (`sc delete`)
+- **Uruchom / Zatrzymaj / Restartuj** - przez `ServiceController`, z czekaniem do 30 s na
+  osiągnięcie docelowego stanu; operacje idą w tle, więc okno nie zamarza
+- przyciski włączają się zależnie od stanu (np. „Uruchom” tylko dla zatrzymanej usługi)
+- nazwa serwisu, nazwa wyświetlana, opis i ścieżka do `AnafAutoToken.Worker.exe` są
+  edytowalne; ścieżka domyślnie wskazuje katalog wczytanego `appsettings.json`
+- rejestracja, start i stop wymagają uprawnień administratora - jeśli ich brak, u góry
+  zakładki pojawia się ostrzeżenie i przycisk **Uruchom ponownie jako Administrator**
+
 **Zakładka „Konfiguracja”**
 - wszystkie parametry: endpoint ANAF, Basic Auth, harmonogram, `DaysBeforeExpiration`,
   ścieżki `config.ini` i katalogu backupów, `InitialRefreshToken`, pełne ustawienia SMTP
@@ -525,7 +540,8 @@ Po starcie program szuka `appsettings.json` obok siebie, a ścieżkę do bazy bi
 Zapis (przycisk **Zapisz** na górze okna) tworzy kopię `appsettings.bak_RRRRMMDD_GGMMSS.json`
 obok pliku i **zachowuje klucze, których nie ma w formularzu**.
 
-> ⚠️ Serwis czyta ustawienia przy starcie - po zapisie zrestartuj usługę.
+> ⚠️ Serwis czyta ustawienia przy starcie - po zapisie zrestartuj usługę
+> (najprościej przyciskiem **Restartuj** na zakładce „Serwis systemowy”).
 > Jeśli serwis jest zainstalowany w `Program Files`, uruchom menedżera jako Administrator.
 > W repozytorium `appsettings.json` w katalogu `src\AnafAutoToken.Worker` jest nadpisywany
 > przy każdym buildzie przez `appsettings.secrets.json` - menedżer służy do edycji pliku
