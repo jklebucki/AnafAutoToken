@@ -78,6 +78,11 @@ C:\ProgramData\AnafAutoToken\
 
 Katalog można przenieść zmienną środowiskową `ANAFAUTOTOKEN_DATA_DIR`.
 
+**Binaria i dane to dwie osobne lokalizacje.** Pliki wykonywalne kładziesz gdzie chcesz -
+`C:\AnafAutoToken\`, `C:\Program Files\...`, pendrive - a katalog danych zawsze zostaje
+ten sam. Menedżer szuka `AnafAutoToken.Worker.exe` **obok siebie**, więc rejestracja usługi
+działa niezależnie od tego, gdzie rozpakowałeś paczkę.
+
 **Pierwsze uruchomienie menedżera zakłada komplet**: podkatalogi, `appsettings.json`
 (na podstawie wzorca z katalogu instalacji albo z domyślnego szablonu) oraz `tokens.db`
 z nałożonymi migracjami. Dzięki temu usługa może wystartować od razu po instalacji.
@@ -623,7 +628,8 @@ zajrzeć do innej instalacji.
   osiągnięcie docelowego stanu; operacje idą w tle, więc okno nie zamarza
 - przyciski włączają się zależnie od stanu (np. „Uruchom” tylko dla zatrzymanej usługi)
 - nazwa serwisu, nazwa wyświetlana, opis i ścieżka do `AnafAutoToken.Worker.exe` są
-  edytowalne; ścieżka domyślnie wskazuje katalog wczytanego `appsettings.json`
+  edytowalne; ścieżka domyślnie wskazuje **katalog menedżera**, a nie katalog danych -
+  jeśli worker leży gdzie indziej, wskaż go przyciskiem obok pola
 - rejestracja, start i stop wymagają uprawnień administratora - jeśli ich brak, u góry
   zakładki pojawia się ostrzeżenie i przycisk **Uruchom ponownie jako Administrator**
 
