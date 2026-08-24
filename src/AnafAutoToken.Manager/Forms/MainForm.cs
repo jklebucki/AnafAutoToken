@@ -22,13 +22,15 @@ internal sealed partial class MainForm : Form
         MinimumSize = new Size(940, 620);
         Font = new Font("Segoe UI", 9f);
 
+        // Taken from the executable itself so a single-file publish needs no loose .ico
+        // next to it. The icon is cosmetic - failing to load one must not block startup.
         try
         {
-            Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "autoanaf.ico"));
+            Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Application.ExecutablePath);
         }
         catch (Exception)
         {
-            // The icon is cosmetic - a missing file must not stop the tool from starting.
+            Icon = null;
         }
 
         _tabs.Dock = DockStyle.Fill;
