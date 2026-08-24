@@ -1,3 +1,4 @@
+using AnafAutoToken.Core.Interfaces;
 using AnafAutoToken.Core.Services;
 using AnafAutoToken.Shared.Configuration;
 using Microsoft.Extensions.Options;
@@ -10,6 +11,12 @@ public class Worker(
     TokenRefreshCoordinator refreshCoordinator,
     IOptions<AnafSettings> settings) : BackgroundService
 {
+    /// <summary>
+    /// Krótki krok pętli zamiast jednego długiego Task.Delay: przetrwa uśpienie maszyny,
+    /// zmianę czasu i zmianę godziny sprawdzania bez restartu usługi.
+    /// </summary>
+    private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(1);
+
     private readonly AnafSettings _settings = settings.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -18,15 +25,36 @@ public class Worker(
 
         try
         {
-            while (!stoppingToken.IsCancellationRequested)
+            var lastCheckDate = await LoadLastCheckDateAsync(stoppingToken);
+
+            // Nadrobienie pominiętego terminu. Poprzednia wersja przy starcie po godzinie
+            // sprawdzania planowała następny przebieg na jutro, więc każde wdrożenie czy
+            // restart maszyny po tej godzinie oznaczały dzień bez sprawdzenia tokenu.
+            if (ShouldRunNow(DateTime.Now, lastCheckDate))
             {
-                var delayUntilNextCheck = CalculateDelayUntilNextCheck();
-                await WaitForNextCheckAsync(delayUntilNextCheck, stoppingToken);
-                
-                if (!stoppingToken.IsCancellationRequested)
+                logger.LogInformation(
+                    "Scheduled time for today has already passed and no check is recorded for today - running it now");
+
+                await PerformTokenCheckAsync(TokenCheckTrigger.Startup, stoppingToken);
+                lastCheckDate = DateOnly.FromDateTime(DateTime.Now);
+            }
+
+            LogNextCheck(DateTime.Now, lastCheckDate);
+
+            using var timer = new PeriodicTimer(TickInterval);
+
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                var now = DateTime.Now;
+
+                if (!ShouldRunNow(now, lastCheckDate))
                 {
-                    await PerformTokenCheckAsync(stoppingToken);
+                    continue;
                 }
+
+                await PerformTokenCheckAsync(TokenCheckTrigger.Scheduled, stoppingToken);
+                lastCheckDate = DateOnly.FromDateTime(now);
+                LogNextCheck(DateTime.Now, lastCheckDate);
             }
         }
         catch (OperationCanceledException)
@@ -40,40 +68,74 @@ public class Worker(
         }
     }
 
-    private TimeSpan CalculateDelayUntilNextCheck()
+    private TimeSpan ScheduledTimeOfDay =>
+        new(_settings.CheckSchedule.CheckHour, _settings.CheckSchedule.CheckMinute, 0);
+
+    private bool ShouldRunNow(DateTime now, DateOnly lastCheckDate) =>
+        DateOnly.FromDateTime(now) > lastCheckDate && now.TimeOfDay >= ScheduledTimeOfDay;
+
+    /// <summary>
+    /// Data ostatniego przebiegu pochodzi z bazy, więc restart usługi nie powoduje
+    /// ponownego sprawdzania tego samego dnia. Ręczne odświeżenie też się liczy - zrobiło
+    /// dokładnie tę samą pracę co przebieg zaplanowany.
+    /// </summary>
+    private async Task<DateOnly> LoadLastCheckDateAsync(CancellationToken cancellationToken)
     {
-        var now = DateTime.Now;
-        var scheduledTime = new DateTime(
-            now.Year,
-            now.Month,
-            now.Day,
-            _settings.CheckSchedule.CheckHour,
-            _settings.CheckSchedule.CheckMinute,
-            0);
-
-        // If scheduled time has already passed today, schedule for tomorrow
-        if (scheduledTime <= now)
+        try
         {
-            scheduledTime = scheduledTime.AddDays(1);
+            using var scope = serviceScopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<ITokenRepository>();
+            var latestCheck = await repository.GetLatestCheckLogAsync(cancellationToken);
+
+            if (latestCheck is null)
+            {
+                logger.LogInformation("No previous token check is recorded in the database");
+                return DateOnly.MinValue;
+            }
+
+            var checkedAtLocal = DateTime.SpecifyKind(latestCheck.CheckedAt, DateTimeKind.Utc).ToLocalTime();
+
+            logger.LogInformation(
+                "Last recorded token check: {CheckedAt} ({Outcome}, {Trigger})",
+                checkedAtLocal,
+                latestCheck.Outcome,
+                latestCheck.Trigger);
+
+            return DateOnly.FromDateTime(checkedAtLocal);
         }
-
-        var delay = scheduledTime - now;
-        
-        logger.LogInformation(
-            "Next token check scheduled for: {ScheduledTime} (in {Hours}h {Minutes}m)",
-            scheduledTime,
-            (int)delay.TotalHours,
-            delay.Minutes);
-
-        return delay;
+        catch (Exception ex)
+        {
+            // Brak historii nie może zablokować harmonogramu - w najgorszym razie
+            // wykonamy jedno sprawdzenie więcej.
+            logger.LogError(ex, "Could not read the last token check from the database");
+            return DateOnly.MinValue;
+        }
     }
 
-    private async Task PerformTokenCheckAsync(CancellationToken cancellationToken)
+    private void LogNextCheck(DateTime now, DateOnly lastCheckDate)
+    {
+        var today = DateOnly.FromDateTime(now);
+
+        var next = today > lastCheckDate && now.TimeOfDay < ScheduledTimeOfDay
+            ? now.Date.Add(ScheduledTimeOfDay)
+            : now.Date.AddDays(1).Add(ScheduledTimeOfDay);
+
+        var delay = next - now;
+
+        logger.LogInformation(
+            "Next token check scheduled for: {ScheduledTime} (in {Hours}h {Minutes}m)",
+            next,
+            (int)delay.TotalHours,
+            delay.Minutes);
+    }
+
+    private async Task PerformTokenCheckAsync(TokenCheckTrigger trigger, CancellationToken cancellationToken)
     {
         try
         {
             logger.LogInformation(
-                "Scheduled token check time reached: {Hour}:{Minute:D2}",
+                "Running token check ({Trigger}). Scheduled time: {Hour}:{Minute:D2}",
+                trigger,
                 _settings.CheckSchedule.CheckHour,
                 _settings.CheckSchedule.CheckMinute);
 
@@ -88,7 +150,7 @@ public class Worker(
                 {
                     using var scope = serviceScopeFactory.CreateScope();
                     var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
-                    await tokenService.CheckAndRefreshTokenIfNeededAsync(token);
+                    await tokenService.CheckAndRefreshTokenIfNeededAsync(trigger, token);
                 },
                 cancellationToken);
         }
@@ -96,19 +158,6 @@ public class Worker(
         {
             logger.LogError(ex, "Error during token check operation");
             // Don't rethrow - we want the service to continue running
-        }
-    }
-
-    private async Task WaitForNextCheckAsync(TimeSpan delay, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(delay, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when service is stopping
-            throw;
         }
     }
 

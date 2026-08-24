@@ -9,18 +9,14 @@ using AnafAutoToken.Worker;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.Options;
 using Serilog;
 using System.Text.Json;
 
-// Configure Serilog
-var logPath = Path.Combine(
-    AppContext.BaseDirectory,
-    "logs",
-    "anaf-auto-token-.txt"
-);
+// Katalog danych musi istnieć zanim cokolwiek zacznie z niego czytać - także logger.
+var bootstrap = AppDataBootstrapper.Ensure();
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -28,18 +24,53 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .WriteTo.Console()
     .WriteTo.File(
-        path: logPath,
+        path: Path.Combine(AppPaths.LogDirectory, "anaf-auto-token-.txt"),
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 
-
 try
 {
     Log.Information("Starting ANAF Auto Token Worker Service");
+    Log.Information("Data directory: {DataDirectory}", bootstrap.DataDirectory);
 
-    var builder = WebApplication.CreateBuilder(args);
+    if (bootstrap.CreatedSettingsFile)
+    {
+        Log.Warning(
+            "Created a new settings file at {SettingsFile}{SeedInfo}. Review it before relying on the service",
+            AppPaths.SettingsFile,
+            bootstrap.SeededFrom is null ? string.Empty : $" (seeded from {bootstrap.SeededFrom})");
+    }
+
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+    {
+        Args = args,
+        // Bez tego ContentRoot to katalog roboczy procesu. Usługa Windows startuje
+        // z C:\Windows\System32, więc appsettings.json obok pliku wykonywalnego nigdy
+        // nie był wczytywany, a cała sekcja Anaf zostawała pusta.
+        ContentRootPath = AppContext.BaseDirectory
+    });
+
+    // Plik w katalogu danych jest JEDYNYM plikowym zrodlem konfiguracji. appsettings.json
+    // obok pliku wykonywalnego sluzy wylacznie za wzorzec przy pierwszym uruchomieniu -
+    // gdyby zostal jako warstwa nizej, klucz usuniety w menedzerze wracalby z wdrozenia,
+    // a stare dane (np. adresy SMTP) cicho przezylyby zmiane konfiguracji.
+    foreach (var jsonSource in builder.Configuration.Sources.OfType<JsonConfigurationSource>().ToList())
+    {
+        builder.Configuration.Sources.Remove(jsonSource);
+    }
+
+    builder.Configuration.AddJsonFile(AppPaths.SettingsFile, optional: false, reloadOnChange: false);
+
+    // Zmienne srodowiskowe i argumenty dokladamy ponownie, zeby zostaly nadrzedne.
+    builder.Configuration.AddEnvironmentVariables();
+
+    if (args.Length > 0)
+    {
+        builder.Configuration.AddCommandLine(args);
+    }
+
     var apiJsonOptions = new JsonSerializerOptions
     {
         PropertyNamingPolicy = null,
@@ -53,9 +84,23 @@ try
     var apiUrl = builder.Configuration["Api:Url"] ?? "http://127.0.0.1:5099";
     builder.WebHost.UseUrls(apiUrl);
 
-    // Configure AnafSettings
-    builder.Services.Configure<AnafSettings>(
-        builder.Configuration.GetSection("Anaf"));
+    // Configure AnafSettings. Walidacja na starcie zamienia ciche NullReference
+    // przy pierwszym tyknięciu harmonogramu na czytelny błąd startu usługi.
+    builder.Services.AddOptions<AnafSettings>()
+        .Bind(builder.Configuration.GetSection("Anaf"))
+        .Validate(
+            settings => settings.CheckSchedule is not null,
+            "Brak sekcji Anaf:CheckSchedule w konfiguracji.")
+        .Validate(
+            settings => settings.BasicAuth is not null,
+            "Brak sekcji Anaf:BasicAuth w konfiguracji.")
+        .Validate(
+            settings => !string.IsNullOrWhiteSpace(settings.TokenEndpoint),
+            "Brak wartości Anaf:TokenEndpoint w konfiguracji.")
+        .Validate(
+            settings => !string.IsNullOrWhiteSpace(settings.ConfigFilePath),
+            "Brak wartości Anaf:ConfigFilePath w konfiguracji.")
+        .ValidateOnStart();
 
     // Add Core Services
     builder.Services.AddScoped<ITokenService, TokenService>();
@@ -64,9 +109,10 @@ try
     builder.Services.AddScoped<IEmailNotificationService, EmailNotificationService>();
 
     // Add Infrastructure
-    var connectionString = builder.Configuration.GetConnectionString("TokenDatabase")
-        ?? "Data Source=C:\\ProgramData\\AnafAutoToken\\tokens.db";
-    EnsureDatabaseDirectoryExists(connectionString);
+    var connectionString = TokenDatabase.ResolveConnectionString(
+        builder.Configuration.GetConnectionString("TokenDatabase"));
+    var databasePath = TokenDatabase.ResolveDatabasePath(connectionString);
+    Log.Information("Token database: {DatabasePath}", databasePath);
     builder.Services.AddInfrastructure(connectionString);
 
     // Add Worker
@@ -92,14 +138,13 @@ try
 
     app.MapGet("/api/tokens/current", async (
         IServiceScopeFactory serviceScopeFactory,
-        IConfiguration configuration,
         CancellationToken cancellationToken) =>
     {
         try
         {
             var payload = await BuildCurrentTokenExportAsync(
                 serviceScopeFactory,
-                configuration,
+                databasePath,
                 cancellationToken);
 
             return Results.Json(payload, apiJsonOptions);
@@ -138,7 +183,7 @@ try
                 {
                     using var scope = serviceScopeFactory.CreateScope();
                     var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
-                    return await tokenService.CheckAndRefreshTokenIfNeededAsync(token);
+                    return await tokenService.CheckAndRefreshTokenIfNeededAsync(TokenCheckTrigger.Manual, token);
                 },
                 cancellationToken);
 
@@ -198,30 +243,9 @@ finally
     await Log.CloseAndFlushAsync();
 }
 
-static void EnsureDatabaseDirectoryExists(string connectionString)
-{
-    var sqliteBuilder = new SqliteConnectionStringBuilder(connectionString);
-
-    if (string.IsNullOrWhiteSpace(sqliteBuilder.DataSource))
-    {
-        return;
-    }
-
-    var fullPath = Path.IsPathRooted(sqliteBuilder.DataSource)
-        ? Path.GetFullPath(sqliteBuilder.DataSource)
-        : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, sqliteBuilder.DataSource));
-
-    var directoryPath = Path.GetDirectoryName(fullPath);
-
-    if (!string.IsNullOrWhiteSpace(directoryPath))
-    {
-        Directory.CreateDirectory(directoryPath);
-    }
-}
-
 static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
     IServiceScopeFactory serviceScopeFactory,
-    IConfiguration configuration,
+    string databasePath,
     CancellationToken cancellationToken)
 {
     using var scope = serviceScopeFactory.CreateScope();
@@ -229,7 +253,6 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
     var tokenRepository = scope.ServiceProvider.GetRequiredService<ITokenRepository>();
     var configFileService = scope.ServiceProvider.GetRequiredService<IConfigFileService>();
     var settings = scope.ServiceProvider.GetRequiredService<IOptions<AnafSettings>>().Value;
-    var sourceDatabasePath = ResolveDatabasePath(configuration);
 
     var latestLog = await tokenRepository.GetLatestSuccessfulLogAsync(cancellationToken);
 
@@ -237,7 +260,7 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
     {
         return new CurrentTokenExportFile(
             ExportedAtUtc: DateTime.UtcNow,
-            SourceDatabase: sourceDatabasePath,
+            SourceDatabase: databasePath,
             CurrentToken: new CurrentTokenPayload(
                 latestLog.AccessToken,
                 latestLog.RefreshToken,
@@ -266,7 +289,7 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
 
     return new CurrentTokenExportFile(
         ExportedAtUtc: DateTime.UtcNow,
-        SourceDatabase: File.Exists(sourceDatabasePath) ? sourceDatabasePath : null,
+        SourceDatabase: File.Exists(databasePath) ? databasePath : null,
         CurrentToken: new CurrentTokenPayload(
             accessToken,
             settings.InitialRefreshToken,
@@ -276,21 +299,3 @@ static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
             SavedAt: null,
             Source: "config-and-settings"));
 }
-
-static string ResolveDatabasePath(IConfiguration configuration)
-{
-    var connectionString = configuration.GetConnectionString("TokenDatabase")
-        ?? "Data Source=C:\\ProgramData\\AnafAutoToken\\tokens.db";
-
-    var sqliteBuilder = new SqliteConnectionStringBuilder(connectionString);
-
-    if (string.IsNullOrWhiteSpace(sqliteBuilder.DataSource))
-    {
-        sqliteBuilder.DataSource = "C:\\ProgramData\\AnafAutoToken\\tokens.db";
-    }
-
-    return Path.IsPathRooted(sqliteBuilder.DataSource)
-        ? Path.GetFullPath(sqliteBuilder.DataSource)
-        : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, sqliteBuilder.DataSource));
-}
-
