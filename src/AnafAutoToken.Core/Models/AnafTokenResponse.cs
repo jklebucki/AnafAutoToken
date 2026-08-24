@@ -11,13 +11,17 @@ public class AnafTokenResponse
     public required int ExpiresIn { get; init; }
 
     [JsonPropertyName("token_type")]
-    public required string TokenType { get; init; }
+    public string? TokenType { get; init; }
 
     [JsonPropertyName("scope")]
-    public required string Scope { get; init; }
+    public string? Scope { get; init; }
 
+    // ANAF rotates the refresh token on every refresh, but the field is treated as
+    // optional so that a response carrying only a new access token still deserializes
+    // instead of failing the whole refresh. The caller keeps the previous refresh
+    // token when this is null or blank.
     [JsonPropertyName("refresh_token")]
-    public required string RefreshToken { get; init; }
+    public string? RefreshToken { get; init; }
 
     [JsonPropertyName("refresh_token_expires_in")]
     public int? RefreshTokenExpiresIn { get; init; }
