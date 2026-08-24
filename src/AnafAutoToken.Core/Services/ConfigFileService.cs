@@ -54,16 +54,26 @@ public partial class ConfigFileService(
             }
 
             var content = await File.ReadAllTextAsync(_settings.ConfigFilePath, cancellationToken);
+
+            if (!AccessTokenRegex().IsMatch(content))
+            {
+                logger.LogError("Access token section not found in config file, nothing was updated");
+                throw new InvalidOperationException(
+                    $"Access token section not found in config file: {_settings.ConfigFilePath}");
+            }
+
+            // A MatchEvaluator is used instead of a replacement string so that any '$'
+            // in the token is never interpreted as a substitution pattern.
             var updatedContent = AccessTokenRegex().Replace(
                 content,
-                $"[AcessToken]{Environment.NewLine}{newAccessToken}",
+                _ => $"[AcessToken]{Environment.NewLine}{newAccessToken}",
                 1);
 
             await File.WriteAllTextAsync(_settings.ConfigFilePath, updatedContent, Encoding.UTF8, cancellationToken);
 
             logger.LogInformation("Access token successfully updated in config file");
         }
-        catch (Exception ex) when (ex is not FileNotFoundException)
+        catch (Exception ex) when (ex is not FileNotFoundException and not InvalidOperationException)
         {
             logger.LogError(ex, "Error updating access token in config file");
             throw;
