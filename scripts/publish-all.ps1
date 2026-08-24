@@ -3,9 +3,9 @@
     Buduje i publikuje wszystkie elementy AnafAutoToken jednym poleceniem.
 
 .DESCRIPTION
-    Uruchamia testy, a następnie publikuje workera, eksporter i menedżera jako
-    samowystarczalne pliki single file (runtime .NET 10 w środku). Na maszynie
-    docelowej nie trzeba instalować ani SDK, ani runtime'u .NET.
+    Uruchamia testy, a następnie publikuje workera i menedżera jako samowystarczalne
+    pliki single file (runtime .NET 10 w środku). Na maszynie docelowej nie trzeba
+    instalować ani SDK, ani runtime'u .NET.
 
     Wszystko ląduje w jednym katalogu - dokładnie tak, jak ma wyglądać katalog
     instalacyjny serwisu.
@@ -14,11 +14,12 @@
     Dla linux-x64 / linux-arm64 zostanie pominięty z ostrzeżeniem.
 
 .PARAMETER OutputPath
-    Jeden wspólny katalog na wszystkie programy. Trafiają do niego obok siebie:
-    AnafAutoToken.Worker.exe, AnafAutoToken.Exporter.exe, AnafAutoToken.Manager.exe
-    oraz pliki towarzyszące workera (appsettings.json, EmailTemplates\, *.bat).
-    Taki układ jest tym, którego oczekują eksporter i menedżer - szukają
-    appsettings.json i tokens.db obok siebie.
+    Jeden wspólny katalog na oba programy. Trafiają do niego obok siebie:
+    AnafAutoToken.Worker.exe, AnafAutoToken.Manager.exe oraz pliki towarzyszące
+    workera (wzorzec appsettings.json, EmailTemplates\, *.bat).
+
+    Konfiguracja robocza i baza danych NIE leżą w tym katalogu - mieszkają
+    w C:\ProgramData\AnafAutoToken i przeżywają wdrożenie nowej wersji.
 
 .PARAMETER SkipTests
     Pomija uruchomienie testów jednostkowych przed publikacją.
@@ -131,9 +132,8 @@ Write-Host "[3/3] Publikacja pakietów single file..." -ForegroundColor Yellow
 Write-Host ""
 
 $targets = @(
-    @{ Project = "Worker";   AssemblyName = "AnafAutoToken.Worker";   WindowsOnly = $false },
-    @{ Project = "Exporter"; AssemblyName = "AnafAutoToken.Exporter"; WindowsOnly = $false },
-    @{ Project = "Manager";  AssemblyName = "AnafAutoToken.Manager";  WindowsOnly = $true }
+    @{ Project = "Worker";  AssemblyName = "AnafAutoToken.Worker";  WindowsOnly = $false },
+    @{ Project = "Manager"; AssemblyName = "AnafAutoToken.Manager"; WindowsOnly = $true }
 )
 
 $results = @()
@@ -195,6 +195,7 @@ Get-ChildItem -Path $rootOutputPath | Sort-Object PSIsContainer, Name | ForEach-
 Write-Host ""
 Write-Host "Runtime .NET 10 jest wbudowany w każdy plik wykonywalny." -ForegroundColor Green
 Write-Host "Maszyna docelowa nie wymaga instalacji SDK ani runtime'u .NET." -ForegroundColor Green
+Write-Host "Konfiguracja i baza powstaną w C:\ProgramData\AnafAutoToken przy pierwszym uruchomieniu." -ForegroundColor Green
 Write-Host ""
 Write-Host "Instalacja usługi z gotowej paczki (bez SDK na hoście):"
 

@@ -10,14 +10,13 @@
     SDK .NET 10 jest potrzebne wyłącznie na maszynie, na której uruchamiasz ten skrypt.
 
 .PARAMETER Project
-    Worker   - usługa odświeżająca tokeny (kopiowany jest cały katalog: exe,
-               appsettings.json, EmailTemplates, skrypty rejestracji usługi).
-    Exporter - narzędzie CLI do eksportu tokenów (kopiowany jest sam plik exe).
-    Manager  - okienkowy menedżer (Windows-only, kopiowany jest sam plik exe).
+    Worker  - usługa odświeżająca tokeny (kopiowany jest cały katalog: exe,
+              wzorzec appsettings.json, EmailTemplates, skrypty rejestracji usługi).
+    Manager - okienkowy menedżer (Windows-only, kopiowany jest sam plik exe).
 #>
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("Worker", "Exporter", "Manager")]
+    [ValidateSet("Worker", "Manager")]
     [string]$Project,
 
     [string]$Configuration = "Release",
@@ -31,9 +30,8 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $definitions = @{
-    Worker   = @{ AssemblyName = "AnafAutoToken.Worker";   CopyEntireOutput = $true;  WindowsOnly = $false }
-    Exporter = @{ AssemblyName = "AnafAutoToken.Exporter"; CopyEntireOutput = $false; WindowsOnly = $false }
-    Manager  = @{ AssemblyName = "AnafAutoToken.Manager";  CopyEntireOutput = $false; WindowsOnly = $true }
+    Worker  = @{ AssemblyName = "AnafAutoToken.Worker";  CopyEntireOutput = $true;  WindowsOnly = $false }
+    Manager = @{ AssemblyName = "AnafAutoToken.Manager"; CopyEntireOutput = $false; WindowsOnly = $true }
 }
 
 $definition = $definitions[$Project]
@@ -151,8 +149,9 @@ Write-Host "Runtime .NET 10 jest wbudowany - maszyna docelowa nie wymaga instala
 Write-Host ""
 
 if ($definition.CopyEntireOutput) {
-    Write-Host "Obok pliku EXE skopiowano appsettings.json, katalog EmailTemplates oraz skrypty rejestracji usługi."
+    Write-Host "Obok pliku EXE skopiowano wzorzec appsettings.json, katalog EmailTemplates oraz skrypty rejestracji usługi."
+    Write-Host "Konfiguracja robocza i baza danych mieszkają w C:\ProgramData\AnafAutoToken."
 }
 else {
-    Write-Host "Umieść ten plik w katalogu instalacyjnym serwisu (obok appsettings.json i tokens.db)."
+    Write-Host "Menedżer czyta konfigurację i bazę z C:\ProgramData\AnafAutoToken - plik EXE możesz położyć gdziekolwiek."
 }
