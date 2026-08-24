@@ -225,7 +225,6 @@ internal sealed partial class MainForm : Form
             ApplyDocumentToSettingsForm();
             RefreshRawJsonView();
             ApplyConfiguredDatabasePath();
-            ApplyDefaultServiceBinaryPath();
             SetStatus($"Wczytano konfigurację z {path}.");
         }
         catch (Exception ex)
