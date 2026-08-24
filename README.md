@@ -31,6 +31,7 @@ Projekt wykorzystuje **Clean Architecture** z podziałem na warstwy:
 AnafAutoToken/
 ├── AnafAutoToken.Worker/       # Entry point, BackgroundService, DI
 ├── AnafAutoToken.Exporter/     # CLI exporter for JSON token dumps
+├── AnafAutoToken.Manager/      # WinForms UI: token viewer + settings editor
 ├── AnafAutoToken.Core/         # Business logic, services, interfaces
 ├── AnafAutoToken.Infrastructure/   # EF Core, HTTP client, repositories
 └── AnafAutoToken.Shared/       # Configuration models, extensions
@@ -273,12 +274,27 @@ Tabela: `TokenRefreshLogs`
 | Kolumna | Typ | Opis |
 |---------|-----|------|
 | `Id` | INTEGER | Primary key |
-| `RefreshToken` | TEXT(500) | Użyty refresh token (hashowany) |
-| `NewAccessToken` | TEXT(2000) | Nowy access token |
-| `ExpiresAt` | DATETIME | Data wygaśnięcia nowego tokenu |
-| `Success` | BOOLEAN | Czy operacja się powiodła |
+| `RefreshToken` | TEXT | Refresh token **po** odświeżeniu (przy błędzie: token, którym próbowano) |
+| `AccessToken` | TEXT | Nowy access token (pusty przy błędzie) |
+| `ExpiresAt` | DATETIME | Data wygaśnięcia nowego access tokenu |
+| `RefreshTokenExpiresAt` | DATETIME | Data wygaśnięcia refresh tokenu (może być NULL dla starych wpisów) |
+| `IsSuccess` | BOOLEAN | Czy operacja się powiodła |
 | `ErrorMessage` | TEXT | Komunikat błędu (jeśli failed) |
-| `CreatedAt` | DATETIME | Timestamp operacji |
+| `ResponseStatusCode` | INTEGER | Kod HTTP odpowiedzi ANAF |
+| `CreatedAt` | DATETIME | Timestamp operacji (UTC) |
+
+### Rotacja refresh tokenu
+
+ANAF zwraca nowy `refresh_token` przy każdym odświeżeniu. Obowiązują następujące zasady:
+
+1. Do wywołania `/token` używany jest **najnowszy udany wpis** z `TokenRefreshLogs`
+   (sortowanie `CreatedAt DESC, Id DESC`); dopiero gdy tabela jest pusta, brany jest
+   `Anaf:InitialRefreshToken` z konfiguracji.
+2. Nowy wpis jest zapisywany do bazy **przed** aktualizacją `config.ini`. Refresh token jest
+   jedyną wartością, której nie da się odzyskać z żadnego innego miejsca, a nieaktualny access
+   token w `config.ini` naprawi się przy kolejnym przebiegu.
+3. Jeśli ANAF nie zwróci pola `refresh_token`, zapisywany jest dotychczasowy token
+   (z ostrzeżeniem w logu) zamiast odrzucania całego odświeżenia.
 
 **Lokalizacja:**
 - **Windows:** `bin\Release\net8.0\publish\tokens.db`
@@ -412,6 +428,53 @@ AnafAutoToken.Exporter.exe -h
 - `-ect` eksportuje aktualny `access_token` i `refresh_token` do timestampowanego pliku JSON
 - `-eat` eksportuje wszystkie poprawnie zapisane pary tokenów z SQLite do timestampowanego pliku JSON
 - `-h` wyświetla pomoc po angielsku
+
+## 🖥️ Menedżer (UI) - `AnafAutoToken.Manager`
+
+Okienkowa (WinForms, Windows-only) nakładka na to samo `appsettings.json` i `tokens.db`,
+którymi posługuje się serwis. Uruchamiana niezależnie od serwisu - nie trzeba go zatrzymywać,
+żeby zajrzeć do bazy.
+
+Publikacja jako pojedynczy plik EXE:
+
+```powershell
+.\scripts\publish-manager-single-file.ps1
+```
+
+Z własnym katalogiem docelowym:
+
+```powershell
+.\scripts\publish-manager-single-file.ps1 -OutputPath "C:\AnafAutoToken"
+```
+
+Po starcie program szuka `appsettings.json` obok siebie, a ścieżkę do bazy bierze z
+`ConnectionStrings:TokenDatabase`. Obie ścieżki można też wskazać ręcznie.
+
+**Zakładka „Baza danych”**
+- pełna historia `TokenRefreshLogs` (najnowsze na górze) wraz z datami wygaśnięcia obu tokenów
+- podsumowanie, z którego wpisu pochodzi refresh token używany przy następnym odświeżeniu
+- pełna treść access i refresh tokenu zaznaczonego wpisu
+- kopiowanie do schowka: sam token, zaznaczony wpis jako JSON, cała historia jako JSON
+- zapis całej historii do pliku JSON
+
+**Zakładka „Konfiguracja”**
+- wszystkie parametry: endpoint ANAF, Basic Auth, harmonogram, `DaysBeforeExpiration`,
+  ścieżki `config.ini` i katalogu backupów, `InitialRefreshToken`, pełne ustawienia SMTP
+  z listą odbiorców, connection string bazy, adres API workera i poziomy logowania
+- hasła są maskowane; checkbox „Pokaż hasła i sekrety” je odsłania
+
+**Zakładka „JSON (surowy)”**
+- podgląd i edycja całego pliku, także kluczy spoza formularza
+- „Zastosuj JSON do formularza” waliduje treść przed przeniesieniem jej do dokumentu
+
+Zapis (przycisk **Zapisz** na górze okna) tworzy kopię `appsettings.bak_RRRRMMDD_GGMMSS.json`
+obok pliku i **zachowuje klucze, których nie ma w formularzu**.
+
+> ⚠️ Serwis czyta ustawienia przy starcie - po zapisie zrestartuj usługę.
+> Jeśli serwis jest zainstalowany w `Program Files`, uruchom menedżera jako Administrator.
+> W repozytorium `appsettings.json` w katalogu `src\AnafAutoToken.Worker` jest nadpisywany
+> przy każdym buildzie przez `appsettings.secrets.json` - menedżer służy do edycji pliku
+> **w katalogu instalacyjnym**, nie w źródłach.
 
 ## 🔧 Troubleshooting
 
