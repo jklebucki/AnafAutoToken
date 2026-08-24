@@ -73,13 +73,14 @@ potrzebne wyłącznie tam, gdzie uruchamiasz skrypt publikacji.
 ```
 
 Skrypt buduje solucję, uruchamia testy jednostkowe, a następnie publikuje wszystkie trzy
-programy do osobnych podkatalogów `publish\`. Parametry:
+programy **do jednego katalogu** `publish\` - dokładnie tak, jak ma wyglądać katalog
+instalacyjny serwisu. Parametry:
 
 | Parametr | Domyślnie | Opis |
 |----------|-----------|------|
 | `-Configuration` | `Release` | Konfiguracja kompilacji |
 | `-Runtime` | `win-x64` | RID, np. `linux-x64`, `linux-arm64` |
-| `-OutputPath` | `publish` | Katalog nadrzędny na paczki |
+| `-OutputPath` | `publish` | Wspólny katalog na wszystkie programy |
 | `-SkipTests` | - | Pomija testy przed publikacją |
 | `-Clean` | - | Czyści katalog docelowy przed publikacją |
 
@@ -109,15 +110,27 @@ Przyjmują te same parametry `-Configuration`, `-Runtime`, `-OutputPath`:
 
 ### Co powstaje
 
-| Program | Wynik | Rozmiar |
-|---------|-------|---------|
-| `AnafAutoToken.Worker` | EXE + `appsettings.json` + `EmailTemplates\` + `register_service.bat` / `unregister_service.bat` | ~52 MB |
-| `AnafAutoToken.Exporter` | sam EXE | ~40 MB |
-| `AnafAutoToken.Manager` | sam EXE | ~51 MB |
+Po `publish-all.ps1` katalog wygląda tak:
 
-Worker dostaje obok siebie `appsettings.json` i katalog `EmailTemplates\`, bo oba są czytane
-z dysku w czasie działania (`appsettings.json` musi zostać edytowalny). Reszta - łącznie
-z całym runtime'em - siedzi w jednym pliku.
+```
+publish\
+├── AnafAutoToken.Worker.exe        ~52 MB   usługa
+├── AnafAutoToken.Exporter.exe      ~40 MB   CLI
+├── AnafAutoToken.Manager.exe       ~51 MB   UI
+├── appsettings.json                         konfiguracja (edytowalna)
+├── register_service.bat
+├── unregister_service.bat
+└── EmailTemplates\                          szablony powiadomień
+```
+
+Wszystkie trzy programy leżą obok siebie celowo: eksporter i menedżer szukają
+`appsettings.json` oraz `tokens.db` w swoim katalogu, a worker czyta `appsettings.json`
+i `EmailTemplates\` z dysku w czasie działania. Reszta - łącznie z całym runtime'em -
+siedzi wewnątrz plików EXE.
+
+Pojedyncze skrypty publikują tylko swój program: `publish-worker-single-file.ps1` wnosi EXE
+razem z plikami towarzyszącymi, a `publish-exporter-single-file.ps1` i
+`publish-manager-single-file.ps1` kopiują wyłącznie swój plik EXE.
 
 Instalacja z gotowej paczki, bez SDK na hoście:
 
@@ -490,6 +503,38 @@ AnafAutoToken.Exporter.exe -h
 - `-eat` eksportuje wszystkie poprawnie zapisane pary tokenów z SQLite do timestampowanego pliku JSON
 - `-h` wyświetla pomoc po angielsku
 
+## 🌐 API workera
+
+Worker wystawia minimalne API pod adresem z `Api:Url` (domyślnie `http://127.0.0.1:5099`):
+
+| Metoda | Ścieżka | Opis |
+|--------|---------|------|
+| `GET` | `/api/tokens/current` | Zwraca aktualny access i refresh token wraz z datami wygaśnięcia |
+| `POST` | `/api/tokens/refresh` | Wymusza natychmiastowe sprawdzenie i odświeżenie tokenu |
+
+`POST /api/tokens/refresh` zwraca `200` z wynikiem operacji albo `409`, jeśli odświeżanie
+już trwa. Przykład:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5099/api/tokens/refresh"
+```
+
+```json
+{
+  "IsSuccess": true,
+  "TokenWasRefreshed": false,
+  "NewExpirationDate": "2027-03-12T08:31:28Z",
+  "ErrorMessage": null,
+  "StartedAtUtc": "2026-08-24T08:31:28.4195118Z",
+  "CompletedAtUtc": "2026-08-24T08:31:28.8638766Z"
+}
+```
+
+> ⚠️ Oba endpointy są nieuwierzytelnione, a `GET` zwraca tokeny w postaci jawnej.
+> Domyślne `Api:Url` wiąże nasłuch do pętli zwrotnej (`127.0.0.1`) i tak powinno zostać.
+> Nie ustawiaj `0.0.0.0` ani adresu zewnętrznego bez postawienia przed workerem
+> uwierzytelnionego proxy.
+
 ## 🖥️ Menedżer (UI) - `AnafAutoToken.Manager`
 
 Okienkowa (WinForms, Windows-only) nakładka na to samo `appsettings.json` i `tokens.db`,
@@ -526,6 +571,20 @@ Po starcie program szuka `appsettings.json` obok siebie, a ścieżkę do bazy bi
   edytowalne; ścieżka domyślnie wskazuje katalog wczytanego `appsettings.json`
 - rejestracja, start i stop wymagają uprawnień administratora - jeśli ich brak, u góry
   zakładki pojawia się ostrzeżenie i przycisk **Uruchom ponownie jako Administrator**
+
+**Ręczne odświeżenie tokenu** (grupa na zakładce „Serwis systemowy”)
+- przycisk **Odśwież token teraz** wywołuje `POST /api/tokens/refresh` na działającym
+  workerze - celowo, a nie w procesie menedżera: dwa procesy pisałyby jednocześnie do
+  `config.ini` i do bazy, a ANAF dostałby dwa żądania z tym samym refresh tokenem
+- worker wykonuje pełną procedurę: sprawdza ważność access tokenu, w razie potrzeby odpytuje
+  ANAF, zapisuje rotowany refresh token, aktualizuje `config.ini` i wysyła powiadomienia
+- wynik ląduje pod przyciskiem: `Token odświeżony` (zielony), `Odświeżenie nie było potrzebne`
+  (bursztynowy) albo treść błędu (czerwony), zawsze ze znacznikiem czasu i czasem trwania
+- po udanym odświeżeniu podgląd bazy przeładowuje się sam, więc nowy wpis jest od razu widoczny
+- adres brany jest z `Api:Url` na zakładce „Konfiguracja”, a nasłuch `0.0.0.0` jest
+  tłumaczony na `127.0.0.1`; jeśli worker nie odpowiada, komunikat kieruje do zakładki serwisu
+- równoległe wywołania są odrzucane (HTTP 409) - ręczne odświeżenie i zaplanowany przebieg
+  o `CheckHour` nie mogą się na siebie nałożyć
 
 **Zakładka „Konfiguracja”**
 - wszystkie parametry: endpoint ANAF, Basic Auth, harmonogram, `DaysBeforeExpiration`,
