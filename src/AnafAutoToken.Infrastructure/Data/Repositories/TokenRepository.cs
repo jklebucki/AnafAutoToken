@@ -11,9 +11,7 @@ public class TokenRepository(AnafDbContext context, ILogger<TokenRepository> log
     {
         try
         {
-            var latestLog = await context.TokenRefreshLogs
-                .Where(log => log.IsSuccess)
-                .OrderByDescending(log => log.CreatedAt)
+            var latestLog = await LatestSuccessfulQuery()
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (latestLog != null)
@@ -40,9 +38,11 @@ public class TokenRepository(AnafDbContext context, ILogger<TokenRepository> log
             await context.SaveChangesAsync(cancellationToken);
 
             logger.LogInformation(
-                "Token refresh log added. Success: {IsSuccess}, ExpiresAt: {ExpiresAt}",
+                "Token refresh log added. Id: {Id}, Success: {IsSuccess}, ExpiresAt: {ExpiresAt}, RefreshTokenExpiresAt: {RefreshTokenExpiresAt}",
+                log.Id,
                 log.IsSuccess,
-                log.ExpiresAt);
+                log.ExpiresAt,
+                log.RefreshTokenExpiresAt);
         }
         catch (Exception ex)
         {
@@ -55,9 +55,7 @@ public class TokenRepository(AnafDbContext context, ILogger<TokenRepository> log
     {
         try
         {
-            return await context.TokenRefreshLogs
-                .Where(log => log.IsSuccess)
-                .OrderByDescending(log => log.CreatedAt)
+            return await LatestSuccessfulQuery()
                 .FirstOrDefaultAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -66,4 +64,13 @@ public class TokenRepository(AnafDbContext context, ILogger<TokenRepository> log
             throw;
         }
     }
+
+    // Rows written in the same tick would otherwise tie on CreatedAt, so the identity
+    // column decides which one is really the newest. Blank refresh tokens are skipped
+    // because they cannot be used to refresh anything.
+    private IQueryable<TokenRefreshLog> LatestSuccessfulQuery() =>
+        context.TokenRefreshLogs
+            .Where(log => log.IsSuccess && log.RefreshToken != null && log.RefreshToken.Trim() != string.Empty)
+            .OrderByDescending(log => log.CreatedAt)
+            .ThenByDescending(log => log.Id);
 }
