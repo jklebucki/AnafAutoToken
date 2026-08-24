@@ -107,6 +107,7 @@ try
     builder.Services.AddScoped<ITokenValidationService, TokenValidationService>();
     builder.Services.AddScoped<IConfigFileService, ConfigFileService>();
     builder.Services.AddScoped<IEmailNotificationService, EmailNotificationService>();
+    builder.Services.AddScoped<IRefreshResponseArchive, RefreshResponseArchive>();
 
     // Add Infrastructure
     var connectionString = TokenDatabase.ResolveConnectionString(

@@ -29,8 +29,10 @@
   <ItemGroup>
     <Content Include="register_service.bat" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="unregister_service.bat" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Sekrety są scalane do appsettings.json przez Directory.Build.targets,
-         więc surowy plik nie ma czego szukać w katalogu wdrożeniowym. -->
-    <Content Update="appsettings.secrets.json" CopyToPublishDirectory="Never" />
+    <!-- Do paczki wdrożeniowej trafia wyłącznie appsettings.json jako wzorzec do zasiania
+         katalogu danych. Nakładki środowiskowe (appsettings.Development.json i podobne)
+         oraz appsettings.secrets.json zostają lokalne: sekrety i tak są scalane do wzorca
+         przez Directory.Build.targets, a nakładka środowiskowa na produkcji tylko myli. -->
+    <Content Update="appsettings.*.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 </Project>
