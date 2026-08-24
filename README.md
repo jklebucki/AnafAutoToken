@@ -1,15 +1,15 @@
 # AnafAutoToken - Automatyczne Odświeżanie Tokenów ANAF
 
-[![.NET](https://img.shields.io/badge/.NET-8.0-blue.svg)](https://dotnet.microsoft.com/) 
+[![.NET](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/) 
 [![C#](https://img.shields.io/badge/C%23-12.0-blue.svg)](https://docs.microsoft.com/en-us/dotnet/csharp/) 
-[![Entity Framework](https://img.shields.io/badge/Entity%20Framework-8.0-green.svg)](https://docs.microsoft.com/en-us/ef/) 
+[![Entity Framework](https://img.shields.io/badge/Entity%20Framework-10.0-green.svg)](https://docs.microsoft.com/en-us/ef/) 
 [![SQLite](https://img.shields.io/badge/SQLite-3.0-blue.svg)](https://www.sqlite.org/) 
 [![Serilog](https://img.shields.io/badge/Serilog-3.0-yellow.svg)](https://serilog.net/) 
 [![Polly](https://img.shields.io/badge/Polly-8.0-orange.svg)](https://github.com/App-vNext/Polly)
 
 ## 📋 Opis
 
-**AnafAutoToken** to wieloplatformowy serwis .NET 8.0, który automatycznie odświeża tokeny dostępu ANAF (Administrația Națională de Administrare Fiscală) przed ich wygaśnięciem. Aplikacja działa jako serwis Windows lub systemd na Linuxie.
+**AnafAutoToken** to wieloplatformowy serwis .NET 10.0, który automatycznie odświeża tokeny dostępu ANAF (Administrația Națională de Administrare Fiscală) przed ich wygaśnięciem. Aplikacja działa jako serwis Windows lub systemd na Linuxie.
 
 ### Główne funkcje:
 - ✅ Automatyczne sprawdzanie ważności tokenu JWT
@@ -38,8 +38,8 @@ AnafAutoToken/
 ```
 
 ### Technologie:
-- **.NET 8.0** (LTS) - Worker Service
-- **Entity Framework Core 8.0** - SQLite
+- **.NET 10.0** (LTS) - Worker Service
+- **Entity Framework Core 10.0** - SQLite
 - **Serilog** - Structured logging
 - **Polly** - Resilience policies
 - **System.IdentityModel.Tokens.Jwt** - JWT validation
@@ -49,13 +49,85 @@ AnafAutoToken/
 
 ### Windows:
 - Windows 10/11 lub Windows Server 2016+
-- .NET 8.0 Runtime ([pobierz tutaj](https://dotnet.microsoft.com/download/dotnet/8.0))
+- **Na maszynie docelowej nie jest wymagany żaden runtime .NET** - paczki są publikowane jako self-contained single file
+- SDK .NET 10 ([pobierz tutaj](https://dotnet.microsoft.com/download/dotnet/10.0)) tylko na maszynie, która buduje paczkę
 - Uprawnienia administratora (do instalacji serwisu)
 
 ### Linux:
 - Ubuntu 20.04+, Debian 11+, RHEL 8+, lub inna dystrybucja z systemd
-- .NET 8.0 Runtime
+- **Na maszynie docelowej nie jest wymagany żaden runtime .NET**
+- SDK .NET 10 tylko na maszynie, która buduje paczkę
 - Uprawnienia root (sudo)
+
+## 📦 Publikacja (single file, bez .NET na hoście)
+
+Publikacja jest **self-contained** i **single file**: runtime .NET 10 (dla workera także
+ASP.NET Core) oraz natywne biblioteki SQLite są wkompilowane w plik wykonywalny. **Na maszynie
+docelowej nie trzeba instalować niczego** - ani SDK, ani runtime'u .NET. SDK .NET 10 jest
+potrzebne wyłącznie tam, gdzie uruchamiasz skrypt publikacji.
+
+### Wszystko jednym poleceniem
+
+```powershell
+.\scripts\publish-all.ps1
+```
+
+Skrypt buduje solucję, uruchamia testy jednostkowe, a następnie publikuje wszystkie trzy
+programy do osobnych podkatalogów `publish\`. Parametry:
+
+| Parametr | Domyślnie | Opis |
+|----------|-----------|------|
+| `-Configuration` | `Release` | Konfiguracja kompilacji |
+| `-Runtime` | `win-x64` | RID, np. `linux-x64`, `linux-arm64` |
+| `-OutputPath` | `publish` | Katalog nadrzędny na paczki |
+| `-SkipTests` | - | Pomija testy przed publikacją |
+| `-Clean` | - | Czyści katalog docelowy przed publikacją |
+
+```powershell
+.\scripts\publish-all.ps1 -OutputPath "C:\AnafAutoToken" -Clean
+.\scripts\publish-all.ps1 -Runtime linux-x64 -OutputPath "C:\out\linux"
+```
+
+Dla runtime'ów innych niż `win-*` menedżer (WinForms) jest pomijany z ostrzeżeniem, a worker
+i eksporter publikują się normalnie. Testy, które nie przejdą, przerywają publikację - chyba
+że użyjesz `-SkipTests`.
+
+### Pojedyncze programy
+
+```powershell
+.\scripts\publish-worker-single-file.ps1      # usługa (publish\AnafAutoToken.Worker)
+.\scripts\publish-exporter-single-file.ps1    # CLI    (publish\AnafAutoToken.Exporter)
+.\scripts\publish-manager-single-file.ps1     # UI     (publish\AnafAutoToken.Manager)
+```
+
+Przyjmują te same parametry `-Configuration`, `-Runtime`, `-OutputPath`:
+
+```powershell
+.\scripts\publish-worker-single-file.ps1 -OutputPath "C:\AnafAutoToken"
+.\scripts\publish-worker-single-file.ps1 -Runtime linux-x64 -OutputPath "C:\out\linux"
+```
+
+### Co powstaje
+
+| Program | Wynik | Rozmiar |
+|---------|-------|---------|
+| `AnafAutoToken.Worker` | EXE + `appsettings.json` + `EmailTemplates\` + `register_service.bat` / `unregister_service.bat` | ~52 MB |
+| `AnafAutoToken.Exporter` | sam EXE | ~40 MB |
+| `AnafAutoToken.Manager` | sam EXE | ~51 MB |
+
+Worker dostaje obok siebie `appsettings.json` i katalog `EmailTemplates\`, bo oba są czytane
+z dysku w czasie działania (`appsettings.json` musi zostać edytowalny). Reszta - łącznie
+z całym runtime'em - siedzi w jednym pliku.
+
+Instalacja z gotowej paczki, bez SDK na hoście:
+
+```powershell
+.\scripts\install-windows-service.ps1 -ArtifactPath "D:\paczki\AnafAutoToken.Worker"
+```
+
+```bash
+sudo ./scripts/install-linux-service.sh --artifact /tmp/AnafAutoToken.Worker
+```
 
 ## 🚀 Instalacja
 
@@ -72,8 +144,8 @@ cd AnafAutoToken
 
 Uwagi do skryptu `install-windows-service.ps1`:
 - **Interaktywny**: skrypt poprosi o kilka wartości (np. ścieżka do `config.ini`, folder instalacji, decyzja czy zainstalować jako serwis).
-- **Sprawdzanie .NET 8**: przed publikacją skrypt weryfikuje obecność runtime .NET 8.0 i przerwie wykonanie, jeśli brak.
-- **Publikacja**: wykonuje `dotnet publish` projektu `src/AnafAutoToken.Worker` w konfiguracji Release do wskazanego folderu (self-contained, `win-x64`, single file).
+- **Dwa tryby**: bez parametrów skrypt sam publikuje workera (wymaga SDK .NET 10 na tej maszynie); z `-ArtifactPath <ścieżka>` instaluje gotową paczkę zbudowaną gdzie indziej - wtedy host nie potrzebuje ani SDK, ani runtime .NET.
+- **Publikacja**: deleguje do `scripts\publish-worker-single-file.ps1` (Release, `win-x64`, self-contained, single file, natywne biblioteki SQLite w środku).
 - **Katalogi**: tworzy katalogi pomocnicze (`backups`, `logs`) w katalogu instalacyjnym jeśli nie istnieją.
 - **Instalacja serwisu**: po publikacji (jeżeli wybierzesz instalację jako serwis) skrypt:
   - tworzy/usunie istniejący serwis jeśli trzeba,
@@ -131,8 +203,7 @@ sudo ./install-linux-service.sh
 ```
 
 Skrypt automatycznie:
-- ✅ Zainstaluje .NET 8.0 Runtime (jeśli brak)
-- ✅ Opublikuje aplikację
+- ✅ Opublikuje aplikację jako self-contained single file (bez instalowania .NET na hoście)
 - ✅ Utworzy użytkownika systemowego `anaftoken`
 - ✅ Skopiuje pliki do `/opt/anafautotoken`
 - ✅ Utworzy plik systemd service
@@ -143,7 +214,7 @@ Skrypt automatycznie:
 ### 1. Edycja `appsettings.json`
 
 Plik znajduje się w katalogu instalacji:
-- **Windows:** `bin\Release\net8.0\publish\appsettings.json`
+- **Windows:** `<katalog instalacji>\appsettings.json`
 - **Linux:** `/opt/anafautotoken/appsettings.json`
 
 ```json
@@ -297,7 +368,7 @@ ANAF zwraca nowy `refresh_token` przy każdym odświeżeniu. Obowiązują nastę
    (z ostrzeżeniem w logu) zamiast odrzucania całego odświeżenia.
 
 **Lokalizacja:**
-- **Windows:** `bin\Release\net8.0\publish\tokens.db`
+- **Windows:** `<katalog instalacji>\tokens.db`
 - **Linux:** `/opt/anafautotoken/tokens.db`
 
 ## 📝 Logi
@@ -383,39 +454,29 @@ sudo systemctl daemon-reload
 ## 🧪 Testowanie lokalne (bez instalacji serwisu)
 
 ```bash
-# Publikacja
-dotnet publish AnafAutoToken.Worker/AnafAutoToken.Worker.csproj -c Release
+dotnet run --project src/AnafAutoToken.Worker
+```
 
-# Uruchomienie
-cd bin/Release/net8.0/publish
-dotnet AnafAutoToken.Worker.dll
+Albo z gotowej paczki single file:
+
+```powershell
+.\scripts\publish-worker-single-file.ps1 -OutputPath C:	mpnaf
+C:	mpnaf\AnafAutoToken.Worker.exe
 ```
 
 **Uwaga:** Upewnij się, że `appsettings.json`, `config.ini` i katalogi `backups/`, `logs/` istnieją w katalogu roboczym.
 
 ## 📤 Eksport tokenów do JSON
 
-W solucji jest też małe narzędzie CLI `AnafAutoToken.Exporter`, które można zbudować lub opublikować jako osobny plik EXE. Plik EXE należy umieścić w tym samym katalogu co `appsettings.json` i `tokens.db`.
+W solucji jest też małe narzędzie CLI `AnafAutoToken.Exporter`. Plik EXE należy umieścić w tym samym katalogu co `appsettings.json` i `tokens.db`.
 
-Przykład publikacji:
-
-```powershell
-dotnet publish src\AnafAutoToken.Exporter\AnafAutoToken.Exporter.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-```
-
-Lub gotowym skryptem:
-
-```powershell
-.\scripts\publish-exporter-single-file.ps1
-```
-
-Z własnym katalogiem docelowym:
+Publikacja (szczegóły w sekcji [Publikacja](#-publikacja-single-file-bez-net-na-hoście)):
 
 ```powershell
 .\scripts\publish-exporter-single-file.ps1 -OutputPath "C:\AnafAutoToken"
 ```
 
-Skrypt publikuje do katalogu tymczasowego i do folderu docelowego kopiuje tylko finalny `AnafAutoToken.Exporter.exe`.
+Skrypt publikuje do katalogu tymczasowego i do folderu docelowego kopiuje tylko finalny, samowystarczalny `AnafAutoToken.Exporter.exe`.
 
 Dostępne opcje:
 
@@ -435,13 +496,7 @@ Okienkowa (WinForms, Windows-only) nakładka na to samo `appsettings.json` i `to
 którymi posługuje się serwis. Uruchamiana niezależnie od serwisu - nie trzeba go zatrzymywać,
 żeby zajrzeć do bazy.
 
-Publikacja jako pojedynczy plik EXE:
-
-```powershell
-.\scripts\publish-manager-single-file.ps1
-```
-
-Z własnym katalogiem docelowym:
+Publikacja jako pojedynczy, samowystarczalny plik EXE:
 
 ```powershell
 .\scripts\publish-manager-single-file.ps1 -OutputPath "C:\AnafAutoToken"
@@ -481,7 +536,7 @@ obok pliku i **zachowuje klucze, których nie ma w formularzu**.
 ### Problem: Serwis nie uruchamia się
 
 **Sprawdź:**
-1. Czy .NET 8.0 Runtime jest zainstalowany: `dotnet --list-runtimes`
+1. Czy plik EXE jest kompletny - paczka jest self-contained, więc runtime nie musi być zainstalowany na hoście
 2. Uprawnienia do plików (Linux): `chown -R anaftoken:anaftoken /opt/anafautotoken`
 3. Logi startowe:
    - **Windows:** Event Viewer → Windows Logs → Application
