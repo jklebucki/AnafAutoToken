@@ -27,6 +27,10 @@ internal sealed partial class MainForm
     private readonly Button _restartServiceButton = new() { Text = "Restartuj", Width = 130 };
     private readonly Button _refreshServiceButton = new() { Text = "Odśwież", Width = 130 };
 
+    private readonly Button _manualRefreshButton = new() { Text = "Odśwież token teraz", AutoSize = true };
+    private readonly Label _manualRefreshEndpointLabel = new();
+    private readonly Label _manualRefreshResultLabel = new();
+
     // 5 s, zgodnie z wymaganiem - odpytanie SCM jest tanie, więc odświeżamy stale.
     private readonly System.Windows.Forms.Timer _serviceStatusTimer = new() { Interval = 5000 };
 
@@ -60,6 +64,7 @@ internal sealed partial class MainForm
         AddSection(stack, BuildServiceStatusGroup());
         AddSection(stack, BuildServiceDefinitionGroup());
         AddSection(stack, BuildServiceActionsGroup());
+        AddSection(stack, BuildManualRefreshGroup());
 
         host.Controls.Add(stack);
 
@@ -103,6 +108,7 @@ internal sealed partial class MainForm
             () => WindowsServiceManager.Restart(_serviceNameBox.Text.Trim()));
 
         _refreshServiceButton.Click += (_, _) => RefreshServiceStatus();
+        _manualRefreshButton.Click += async (_, _) => await TriggerManualRefreshAsync();
 
         _serviceNameBox.TextChanged += (_, _) => RefreshServiceStatus();
         _serviceStatusTimer.Tick += (_, _) => RefreshServiceStatus();
@@ -203,6 +209,143 @@ internal sealed partial class MainForm
         return CreateGroup("Akcje", buttons);
     }
 
+    private GroupBox BuildManualRefreshGroup()
+    {
+        _manualRefreshEndpointLabel.Dock = DockStyle.Top;
+        _manualRefreshEndpointLabel.AutoSize = false;
+        _manualRefreshEndpointLabel.Height = 22;
+        _manualRefreshEndpointLabel.TextAlign = ContentAlignment.MiddleLeft;
+        _manualRefreshEndpointLabel.ForeColor = SystemColors.GrayText;
+
+        _manualRefreshResultLabel.Dock = DockStyle.Top;
+        _manualRefreshResultLabel.AutoSize = false;
+        _manualRefreshResultLabel.Height = 54;
+        _manualRefreshResultLabel.TextAlign = ContentAlignment.TopLeft;
+        _manualRefreshResultLabel.Text = "Jeszcze nie uruchamiano ręcznego odświeżenia w tej sesji.";
+        _manualRefreshResultLabel.ForeColor = SystemColors.GrayText;
+
+        var buttonRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0, 2, 0, 6)
+        };
+
+        buttonRow.Controls.Add(_manualRefreshButton);
+
+        var content = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 120
+        };
+
+        content.Controls.Add(_manualRefreshResultLabel);
+        content.Controls.Add(buttonRow);
+        content.Controls.Add(_manualRefreshEndpointLabel);
+
+        return CreateGroup("Ręczne odświeżenie tokenu", content);
+    }
+
+    /// <summary>
+    /// Adres bierzemy z pola Api:Url na zakładce Konfiguracja, żeby nie trzymać tej samej
+    /// wartości w dwóch miejscach interfejsu.
+    /// </summary>
+    private string ResolveWorkerApiUrl()
+    {
+        var url = _apiUrlBox.Text.Trim();
+        return string.IsNullOrWhiteSpace(url) ? WorkerApiClient.DefaultBaseUrl : url;
+    }
+
+    private async Task TriggerManualRefreshAsync()
+    {
+        var endpoint = ResolveWorkerApiUrl();
+
+        var answer = MessageBox.Show(
+            this,
+            "Wymusić odświeżenie tokenu teraz?" + Environment.NewLine + Environment.NewLine
+            + "Worker wykona pełną procedurę: sprawdzi ważność access tokenu, w razie potrzeby odpyta "
+            + "ANAF, zapisze nowy refresh token do bazy, zaktualizuje config.ini i wyśle powiadomienia e-mail."
+            + Environment.NewLine + Environment.NewLine
+            + $"Adres workera: {endpoint}",
+            "Ręczne odświeżenie tokenu",
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Question);
+
+        if (answer != DialogResult.OK)
+        {
+            SetStatus("Ręczne odświeżenie tokenu: anulowano.");
+            return;
+        }
+
+        _serviceOperationInProgress = true;
+        _serviceStatusTimer.Stop();
+        _manualRefreshButton.Enabled = false;
+        UpdateServiceButtons();
+        UseWaitCursor = true;
+        SetStatus("Ręczne odświeżenie tokenu - czekam na odpowiedź workera…");
+        SetManualRefreshResult("Trwa odświeżanie…", SystemColors.GrayText);
+
+        try
+        {
+            var response = await WorkerApiClient.TriggerRefreshAsync(endpoint);
+            var duration = response.CompletedAtUtc - response.StartedAtUtc;
+            var expiration = response.NewExpirationDate is { } value
+                ? $"{value:yyyy-MM-dd HH:mm:ss} UTC"
+                : "nieznana";
+
+            if (!response.IsSuccess)
+            {
+                SetManualRefreshResult(
+                    $"Odświeżenie nie powiodło się: {response.ErrorMessage}"
+                    + $"{Environment.NewLine}Czas: {duration.TotalSeconds:F1} s. Szczegóły w logach serwisu.",
+                    Color.Firebrick);
+                SetStatus("Ręczne odświeżenie tokenu zakończone błędem.", isWarning: true);
+                return;
+            }
+
+            if (response.TokenWasRefreshed)
+            {
+                SetManualRefreshResult(
+                    $"Token odświeżony. Nowy access token wygasa: {expiration}."
+                    + $"{Environment.NewLine}Czas: {duration.TotalSeconds:F1} s.",
+                    Color.SeaGreen);
+                SetStatus("Token odświeżony - odświeżam podgląd bazy.");
+
+                await ReloadDatabaseAsync();
+            }
+            else
+            {
+                SetManualRefreshResult(
+                    $"Odświeżenie nie było potrzebne - access token jest jeszcze ważny do {expiration}."
+                    + $"{Environment.NewLine}Czas: {duration.TotalSeconds:F1} s.",
+                    Color.DarkGoldenrod);
+                SetStatus("Worker uznał, że odświeżenie nie jest jeszcze potrzebne.");
+            }
+        }
+        catch (Exception ex)
+        {
+            SetManualRefreshResult(ex.Message, Color.Firebrick);
+            SetStatus($"Ręczne odświeżenie tokenu: {ex.Message}", isWarning: true);
+            MessageBox.Show(this, ex.Message, "Ręczne odświeżenie tokenu", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+            _serviceOperationInProgress = false;
+            _manualRefreshButton.Enabled = true;
+            RefreshServiceStatus();
+            _serviceStatusTimer.Start();
+        }
+    }
+
+    private void SetManualRefreshResult(string text, Color color)
+    {
+        _manualRefreshResultLabel.Text = $"[{DateTime.Now:HH:mm:ss}] {text}";
+        _manualRefreshResultLabel.ForeColor = color;
+    }
+
     private void InitialiseServiceTab()
     {
         var isElevated = WindowsServiceManager.IsElevated();
@@ -263,6 +406,7 @@ internal sealed partial class MainForm
         // Kolor detali pinujemy przy każdym odświeżeniu - tylko nagłówek stanu
         // ma być kolorowany, reszta zawsze czyta się jako tekst pomocniczy.
         _serviceDetailsLabel.ForeColor = SystemColors.GrayText;
+        _manualRefreshEndpointLabel.Text = $"Żądanie trafi do: POST {ResolveWorkerApiUrl().TrimEnd('/')}/api/tokens/refresh";
 
         _serviceDetailsLabel.Text = _serviceSnapshot.IsInstalled
             ? string.Join(
