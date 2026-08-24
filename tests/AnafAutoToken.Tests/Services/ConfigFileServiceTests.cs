@@ -200,6 +200,42 @@ public class ConfigFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateAccessTokenAsync_WithMissingAccessTokenSection_ThrowsInsteadOfSilentlyDoingNothing()
+    {
+        // Arrange
+        var configContent = """
+            [SomeSection]
+            SomeKey=SomeValue
+            """;
+        await File.WriteAllTextAsync(_testConfigFile, configContent);
+
+        // Act
+        Func<Task> act = async () => await _service.UpdateAccessTokenAsync("new.jwt.token.value");
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        (await File.ReadAllTextAsync(_testConfigFile)).Should().Be(configContent);
+    }
+
+    [Fact]
+    public async Task UpdateAccessTokenAsync_WithDollarSignInToken_WritesTheTokenVerbatim()
+    {
+        // Arrange - '$' must not be interpreted as a regex substitution pattern
+        var newToken = "head.$1$&$`.tail";
+        var configContent = """
+            [AcessToken]
+            old.jwt.token.value
+            """;
+        await File.WriteAllTextAsync(_testConfigFile, configContent);
+
+        // Act
+        await _service.UpdateAccessTokenAsync(newToken);
+
+        // Assert
+        (await File.ReadAllTextAsync(_testConfigFile)).Should().Contain(newToken);
+    }
+
+    [Fact]
     public async Task CreateBackupAsync_WithValidConfigFile_CreatesBackup()
     {
         // Arrange
