@@ -23,6 +23,7 @@ public class TokenServiceTests
     private readonly Mock<ITokenRepository> _tokenRepositoryMock = new();
     private readonly Mock<IEmailNotificationService> _emailNotificationServiceMock = new();
     private readonly List<string> _callOrder = [];
+    private readonly List<TokenCheckLog> _checkLogs = [];
 
     public TokenServiceTests()
     {
@@ -44,6 +45,11 @@ public class TokenServiceTests
             .Setup(x => x.AddTokenRefreshLogAsync(It.IsAny<TokenRefreshLog>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask)
             .Callback(() => _callOrder.Add("database-save"));
+
+        _tokenRepositoryMock
+            .Setup(x => x.AddTokenCheckLogAsync(It.IsAny<TokenCheckLog>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask)
+            .Callback<TokenCheckLog, CancellationToken>((log, _) => _checkLogs.Add(log));
 
         // The access token is readable and due for refresh unless a test says otherwise.
         _tokenValidationServiceMock
@@ -243,6 +249,84 @@ public class TokenServiceTests
 
         CapturedSuccessfulLog().RefreshTokenExpiresAt
             .Should().BeCloseTo(before.AddDays(365), TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenRefreshIsNotNeeded_StillRecordsTheCheck()
+    {
+        _tokenValidationServiceMock
+            .Setup(x => x.ShouldRefreshToken(It.IsAny<string>(), It.IsAny<int>()))
+            .Returns(false);
+
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        // To jest sedno naprawy: przebieg bez odswiezenia rowniez zostawia slad,
+        // wiec pusta historia znaczy "serwis nie chodzil", a nie "nie bylo co robic".
+        var check = _checkLogs.Single();
+        check.Outcome.Should().Be(TokenCheckOutcome.NoRefreshNeeded);
+        check.Trigger.Should().Be(TokenCheckTrigger.Scheduled);
+        check.AccessTokenExpiresAt.Should().NotBeNull();
+        _callOrder.Should().BeEmpty("token nie wymagal odswiezenia");
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenRefreshSucceeds_RecordsRefreshedCheck()
+    {
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+        SetupApiResponse(RotatedRefreshToken);
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync(TokenCheckTrigger.Manual);
+
+        var check = _checkLogs.Single();
+        check.Outcome.Should().Be(TokenCheckOutcome.Refreshed);
+        check.Trigger.Should().Be(TokenCheckTrigger.Manual);
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenRefreshFails_RecordsFailedCheck()
+    {
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+
+        _anafApiClientMock
+            .Setup(x => x.RefreshTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("invalid_grant"));
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync(TokenCheckTrigger.Startup);
+
+        var check = _checkLogs.Single();
+        check.Outcome.Should().Be(TokenCheckOutcome.Failed);
+        check.Trigger.Should().Be(TokenCheckTrigger.Startup);
+        check.Message.Should().Contain("invalid_grant");
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WithUnreadableAccessToken_RecordsFailedCheck()
+    {
+        _tokenValidationServiceMock
+            .Setup(x => x.GetExpirationDate(It.IsAny<string>()))
+            .Returns((DateTime?)null);
+
+        await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        _checkLogs.Single().Outcome.Should().Be(TokenCheckOutcome.Failed);
+    }
+
+    [Fact]
+    public async Task CheckAndRefreshTokenIfNeededAsync_WhenCheckLogCannotBeWritten_StillRefreshes()
+    {
+        StoreLatestSuccessfulLog(StoredRefreshToken);
+        SetupApiResponse(RotatedRefreshToken);
+
+        _tokenRepositoryMock
+            .Setup(x => x.AddTokenCheckLogAsync(It.IsAny<TokenCheckLog>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("historia niedostepna"));
+
+        var result = await CreateService().CheckAndRefreshTokenIfNeededAsync();
+
+        result.IsSuccess.Should().BeTrue("historia sprawdzen nie moze byc wazniejsza od samego tokenu");
+        CapturedSuccessfulLog().RefreshToken.Should().Be(RotatedRefreshToken);
     }
 
     private TokenService CreateService() => new(

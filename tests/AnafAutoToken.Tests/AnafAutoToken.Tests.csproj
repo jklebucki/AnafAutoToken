@@ -13,7 +13,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" Version="8.8.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.15.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Moq" Version="4.20.72" />
@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AnafAutoToken.Core\AnafAutoToken.Core.csproj" />
+    <ProjectReference Include="..\..\src\AnafAutoToken.Infrastructure\AnafAutoToken.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\AnafAutoToken.Shared\AnafAutoToken.Shared.csproj" />
   </ItemGroup>
 
