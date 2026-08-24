@@ -10,17 +10,12 @@ namespace AnafAutoToken.Manager.Data;
 /// </summary>
 internal static class TokenDatabaseReader
 {
-    public static string ResolveDatabasePath(string? connectionString, string baseDirectory)
-    {
-        var builder = new SqliteConnectionStringBuilder(
-            string.IsNullOrWhiteSpace(connectionString) ? "Data Source=tokens.db" : connectionString);
-
-        var dataSource = string.IsNullOrWhiteSpace(builder.DataSource) ? "tokens.db" : builder.DataSource;
-
-        return Path.IsPathRooted(dataSource)
-            ? Path.GetFullPath(dataSource)
-            : Path.GetFullPath(Path.Combine(baseDirectory, dataSource));
-    }
+    private static string BuildConnectionString(string databasePath) =>
+        new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadWrite
+        }.ToString();
 
     public static async Task<IReadOnlyList<TokenLogRow>> ReadAllAsync(
         string databasePath,
@@ -31,13 +26,7 @@ internal static class TokenDatabaseReader
             throw new FileNotFoundException($"Nie znaleziono pliku bazy danych: {databasePath}", databasePath);
         }
 
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWrite
-        }.ToString();
-
-        await using var connection = new SqliteConnection(connectionString);
+        await using var connection = new SqliteConnection(BuildConnectionString(databasePath));
         await connection.OpenAsync(cancellationToken);
 
         var hasRefreshTokenExpiresAt = await HasColumnAsync(connection, "RefreshTokenExpiresAt", cancellationToken);
@@ -82,6 +71,61 @@ internal static class TokenDatabaseReader
         }
 
         return rows;
+    }
+
+    public static async Task<IReadOnlyList<TokenCheckRow>> ReadChecksAsync(
+        string databasePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(databasePath))
+        {
+            throw new FileNotFoundException($"Nie znaleziono pliku bazy danych: {databasePath}", databasePath);
+        }
+
+        await using var connection = new SqliteConnection(BuildConnectionString(databasePath));
+        await connection.OpenAsync(cancellationToken);
+
+        if (!await HasTableAsync(connection, "TokenCheckLogs", cancellationToken))
+        {
+            // Baza sprzed wprowadzenia historii przebiegow - pusta lista zamiast bledu.
+            return [];
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, CheckedAt, Outcome, Trigger, AccessTokenExpiresAt, RefreshTokenExpiresAt, Message
+            FROM TokenCheckLogs
+            ORDER BY CheckedAt DESC, Id DESC
+            """;
+
+        var rows = new List<TokenCheckRow>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new TokenCheckRow(
+                Id: reader.GetInt32(0),
+                CheckedAt: reader.GetDateTime(1),
+                Outcome: reader.GetInt32(2),
+                Trigger: reader.GetInt32(3),
+                AccessTokenExpiresAt: reader.IsDBNull(4) ? null : reader.GetDateTime(4),
+                RefreshTokenExpiresAt: reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                Message: reader.IsDBNull(6) ? null : reader.GetString(6)));
+        }
+
+        return rows;
+    }
+
+    private static async Task<bool> HasTableAsync(
+        SqliteConnection connection,
+        string tableName,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $name;";
+        command.Parameters.AddWithValue("$name", tableName);
+
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) > 0;
     }
 
     private static async Task<bool> HasColumnAsync(
