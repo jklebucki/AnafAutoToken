@@ -15,7 +15,40 @@ namespace AnafAutoToken.Infrastructure.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+
+            modelBuilder.Entity("AnafAutoToken.Core.Interfaces.TokenCheckLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("AccessTokenExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("RefreshTokenExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Trigger")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CheckedAt")
+                        .HasDatabaseName("IX_TokenCheckLogs_CheckedAt");
+
+                    b.ToTable("TokenCheckLogs");
+                });
 
             modelBuilder.Entity("AnafAutoToken.Core.Interfaces.TokenRefreshLog", b =>
                 {

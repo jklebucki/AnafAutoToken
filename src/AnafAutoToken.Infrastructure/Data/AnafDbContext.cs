@@ -7,6 +7,8 @@ public class AnafDbContext(DbContextOptions<AnafDbContext> options) : DbContext(
 {
     public DbSet<TokenRefreshLog> TokenRefreshLogs => Set<TokenRefreshLog>();
 
+    public DbSet<TokenCheckLog> TokenCheckLogs => Set<TokenCheckLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -39,6 +41,29 @@ public class AnafDbContext(DbContextOptions<AnafDbContext> options) : DbContext(
 
             entity.HasIndex(e => e.CreatedAt)
                 .HasDatabaseName("IX_TokenRefreshLogs_CreatedAt");
+        });
+
+        modelBuilder.Entity<TokenCheckLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.CheckedAt)
+                .IsRequired();
+
+            // Zapis jako liczba - czytelność w SQL ustępuje tu stabilności przy zmianie nazw.
+            entity.Property(e => e.Outcome)
+                .IsRequired()
+                .HasConversion<int>();
+
+            entity.Property(e => e.Trigger)
+                .IsRequired()
+                .HasConversion<int>();
+
+            entity.Property(e => e.Message)
+                .HasMaxLength(1000);
+
+            entity.HasIndex(e => e.CheckedAt)
+                .HasDatabaseName("IX_TokenCheckLogs_CheckedAt");
         });
     }
 }

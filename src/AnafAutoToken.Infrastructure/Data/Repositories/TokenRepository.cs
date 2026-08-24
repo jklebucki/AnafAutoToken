@@ -65,6 +65,42 @@ public class TokenRepository(AnafDbContext context, ILogger<TokenRepository> log
         }
     }
 
+    public async Task AddTokenCheckLogAsync(TokenCheckLog log, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await context.TokenCheckLogs.AddAsync(log, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Token check log added. Id: {Id}, Outcome: {Outcome}, Trigger: {Trigger}",
+                log.Id,
+                log.Outcome,
+                log.Trigger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error adding token check log to database");
+            throw;
+        }
+    }
+
+    public async Task<TokenCheckLog?> GetLatestCheckLogAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await context.TokenCheckLogs
+                .OrderByDescending(log => log.CheckedAt)
+                .ThenByDescending(log => log.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving latest token check log from database");
+            throw;
+        }
+    }
+
     // Rows written in the same tick would otherwise tie on CreatedAt, so the identity
     // column decides which one is really the newest. Blank refresh tokens are skipped
     // because they cannot be used to refresh anything.
