@@ -21,7 +21,9 @@ public class TokenService(
 
     private readonly AnafSettings _settings = settings.Value;
 
-    public async Task<TokenRefreshResult> CheckAndRefreshTokenIfNeededAsync(CancellationToken cancellationToken = default)
+    public async Task<TokenRefreshResult> CheckAndRefreshTokenIfNeededAsync(
+        TokenCheckTrigger trigger = TokenCheckTrigger.Scheduled,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -39,7 +41,7 @@ public class TokenService(
 
             if (!currentExpiration.HasValue)
             {
-                return await ReportUnreadableAccessTokenAsync(cancellationToken);
+                return await ReportUnreadableAccessTokenAsync(trigger, cancellationToken);
             }
 
             // Check if token needs refresh
@@ -52,7 +54,15 @@ public class TokenService(
 
                 // The access token is fine, but the refresh token has its own lifetime -
                 // if it dies unnoticed the service can never refresh again.
-                await LogStoredRefreshTokenHealthAsync(cancellationToken);
+                var storedRefreshTokenExpiry = await LogStoredRefreshTokenHealthAsync(cancellationToken);
+
+                await RecordCheckAsync(
+                    trigger,
+                    TokenCheckOutcome.NoRefreshNeeded,
+                    expirationDate,
+                    storedRefreshTokenExpiry,
+                    "Access token jest jeszcze wazny - odswiezenie nie bylo potrzebne.",
+                    cancellationToken);
 
                 // Calculate days until expiration and days until the system will attempt refresh
                 var now = DateTime.UtcNow;
@@ -109,6 +119,14 @@ public class TokenService(
                     {
                         logger.LogError(emailEx, "Failed to send error notification email for missing refresh token");
                     }
+
+                    await RecordCheckAsync(
+                        trigger,
+                        TokenCheckOutcome.Failed,
+                        currentExpiration,
+                        null,
+                        errorMessage,
+                        cancellationToken);
 
                     return TokenRefreshResult.Failure(errorMessage);
                 }
@@ -238,6 +256,14 @@ public class TokenService(
                     logger.LogError(emailEx, $"Failed to send success notification email. Token was refreshed successfully but email notification failed. {emailEx.InnerException?.Message}");
                 }
 
+                await RecordCheckAsync(
+                    trigger,
+                    TokenCheckOutcome.Refreshed,
+                    expiresAt,
+                    refreshTokenExpiresAt,
+                    "Token odswiezony, nowy refresh token zapisany w bazie.",
+                    cancellationToken);
+
                 return TokenRefreshResult.Success(expiresAt);
             }
             else
@@ -261,6 +287,14 @@ public class TokenService(
 
                 logger.LogError("Token refresh failed and logged to database");
 
+                await RecordCheckAsync(
+                    trigger,
+                    TokenCheckOutcome.Failed,
+                    currentExpiration,
+                    failedLog.RefreshTokenExpiresAt,
+                    errorMessage,
+                    cancellationToken);
+
                 return TokenRefreshResult.Failure(errorMessage, apiException);
             }
         }
@@ -282,6 +316,8 @@ public class TokenService(
             {
                 logger.LogError(emailEx, "Failed to send error notification email for unexpected error");
             }
+
+            await RecordCheckAsync(trigger, TokenCheckOutcome.Failed, null, null, ex.Message, cancellationToken);
 
             return TokenRefreshResult.Failure(ex.Message, ex);
         }
@@ -327,7 +363,7 @@ public class TokenService(
             : createdAt.Add(DefaultRefreshTokenLifetime);
     }
 
-    private async Task LogStoredRefreshTokenHealthAsync(CancellationToken cancellationToken)
+    private async Task<DateTime?> LogStoredRefreshTokenHealthAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -337,12 +373,12 @@ public class TokenService(
             {
                 logger.LogWarning(
                     "No successful refresh is stored in the database yet - the initial refresh token from configuration will be used for the next refresh");
-                return;
+                return null;
             }
 
             if (latestLog.RefreshTokenExpiresAt is not { } refreshTokenExpiresAt)
             {
-                return;
+                return null;
             }
 
             var daysLeft = (refreshTokenExpiresAt - DateTime.UtcNow).TotalDays;
@@ -366,14 +402,54 @@ public class TokenService(
                     "Stored refresh token is valid until {RefreshTokenExpiresAt}",
                     refreshTokenExpiresAt);
             }
+
+            return refreshTokenExpiresAt;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to inspect the stored refresh token");
+            return null;
         }
     }
 
-    private async Task<TokenRefreshResult> ReportUnreadableAccessTokenAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Slad po przebiegu. Nigdy nie przerywa odswiezania - historia sprawdzen jest
+    /// wartosciowa, ale nie wazniejsza od samego tokenu.
+    /// </summary>
+    private async Task RecordCheckAsync(
+        TokenCheckTrigger trigger,
+        TokenCheckOutcome outcome,
+        DateTime? accessTokenExpiresAt,
+        DateTime? refreshTokenExpiresAt,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await tokenRepository.AddTokenCheckLogAsync(
+                new TokenCheckLog
+                {
+                    CheckedAt = DateTime.UtcNow,
+                    Outcome = outcome,
+                    Trigger = trigger,
+                    AccessTokenExpiresAt = accessTokenExpiresAt,
+                    RefreshTokenExpiresAt = refreshTokenExpiresAt,
+                    Message = Truncate(message, 1000)
+                },
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to record the token check in the database");
+        }
+    }
+
+    private static string? Truncate(string? value, int maxLength) =>
+        value is not null && value.Length > maxLength ? value[..maxLength] : value;
+
+    private async Task<TokenRefreshResult> ReportUnreadableAccessTokenAsync(
+        TokenCheckTrigger trigger,
+        CancellationToken cancellationToken)
     {
         const string errorMessage = "The access token in the config file could not be parsed, so its expiration date is unknown";
 
@@ -392,6 +468,8 @@ public class TokenService(
         {
             logger.LogError(emailEx, "Failed to send error notification email for unreadable access token");
         }
+
+        await RecordCheckAsync(trigger, TokenCheckOutcome.Failed, null, null, errorMessage, cancellationToken);
 
         return TokenRefreshResult.Failure(errorMessage);
     }
