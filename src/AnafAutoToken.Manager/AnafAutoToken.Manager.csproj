@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AnafAutoToken.Manager</RootNamespace>
+    <AssemblyName>AnafAutoToken.Manager</AssemblyName>
+    <ApplicationIcon>..\..\scripts\autoanaf.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AnafAutoToken.Infrastructure\AnafAutoToken.Infrastructure.csproj" />
+    <ProjectReference Include="..\AnafAutoToken.Shared\AnafAutoToken.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\scripts\autoanaf.ico" Link="autoanaf.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
