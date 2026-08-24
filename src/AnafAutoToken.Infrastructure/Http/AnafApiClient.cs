@@ -59,7 +59,22 @@ public class AnafApiClient(
                 throw new InvalidOperationException("Failed to deserialize token response");
             }
 
-            logger.LogInformation("Token refresh successful. Expires in: {ExpiresIn} seconds", tokenResponse.ExpiresIn);
+            if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+            {
+                logger.LogError("ANAF returned a token response without an access token");
+                throw new InvalidOperationException("ANAF returned a token response without an access token");
+            }
+
+            if (string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+            {
+                logger.LogWarning(
+                    "ANAF token response did not contain a refresh token. The previously stored refresh token will be kept");
+            }
+
+            logger.LogInformation(
+                "Token refresh successful. Expires in: {ExpiresIn} seconds, refresh token returned: {HasRefreshToken}",
+                tokenResponse.ExpiresIn,
+                !string.IsNullOrWhiteSpace(tokenResponse.RefreshToken));
 
             return tokenResponse;
         }
