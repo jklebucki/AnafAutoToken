@@ -90,9 +90,10 @@ packages/
 backups/
 *.bak
 
-# Config files with sensitive data (uncomment if needed)
-# appsettings*.json
-# config.ini
+# Config files with sensitive data
+appsettings*.json
+appsettings*.secrets.json
+config.ini
 
 # Test results
 TestResults/
