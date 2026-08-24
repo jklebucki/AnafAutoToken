@@ -120,4 +120,5 @@ dist/
 
 # Secrets
 secrets.json
-src/AnafAutoToken.Worker/appsettings.secrets.json
+src/AnafAutoToken.Worker/appsettings.secrets.json# Temporary script logs
+scripts/*.txt
