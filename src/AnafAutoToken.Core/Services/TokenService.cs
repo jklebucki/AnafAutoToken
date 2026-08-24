@@ -16,6 +16,9 @@ public class TokenService(
     IOptions<AnafSettings> settings,
     ILogger<TokenService> logger) : ITokenService
 {
+    private const int RefreshTokenExpiryWarningDays = 30;
+    private static readonly TimeSpan DefaultRefreshTokenLifetime = TimeSpan.FromDays(365);
+
     private readonly AnafSettings _settings = settings.Value;
 
     public async Task<TokenRefreshResult> CheckAndRefreshTokenIfNeededAsync(CancellationToken cancellationToken = default)
@@ -28,19 +31,32 @@ public class TokenService(
             var currentAccessToken = await configFileService.ReadAccessTokenAsync(cancellationToken);
             logger.LogInformation("Current access token read from config file");
 
+            // ShouldRefreshToken cannot tell a token that is far from expiring apart from
+            // one that cannot be parsed at all - both come back as false. Checking the
+            // expiration date up front stops an unreadable token from being reported as
+            // healthy forever.
+            var currentExpiration = tokenValidationService.GetExpirationDate(currentAccessToken);
+
+            if (!currentExpiration.HasValue)
+            {
+                return await ReportUnreadableAccessTokenAsync(cancellationToken);
+            }
+
             // Check if token needs refresh
             if (!tokenValidationService.ShouldRefreshToken(currentAccessToken, _settings.DaysBeforeExpiration))
             {
-                var expirationDate = tokenValidationService.GetExpirationDate(currentAccessToken);
+                var expirationDate = currentExpiration.Value;
                 logger.LogInformation(
                     "Token does not need refresh yet. Expires at: {ExpirationDate}",
                     expirationDate);
 
+                // The access token is fine, but the refresh token has its own lifetime -
+                // if it dies unnoticed the service can never refresh again.
+                await LogStoredRefreshTokenHealthAsync(cancellationToken);
+
                 // Calculate days until expiration and days until the system will attempt refresh
                 var now = DateTime.UtcNow;
-                double daysUntilExpirationDouble = expirationDate.HasValue
-                    ? (expirationDate.Value - now).TotalDays
-                    : double.PositiveInfinity;
+                var daysUntilExpirationDouble = (expirationDate - now).TotalDays;
 
                 // Days until the system will attempt refresh = daysUntilExpiration - DaysBeforeExpirationFromConfig
                 var daysUntilRefresh = (int)Math.Max(0, Math.Ceiling(daysUntilExpirationDouble - _settings.DaysBeforeExpiration));
@@ -50,7 +66,7 @@ public class TokenService(
                 {
                     logger.LogInformation("Sending no refresh needed notification email");
                     await emailNotificationService.SendTokenNoRefreshNeededNotificationAsync(
-                        expirationDate ?? DateTime.MaxValue,
+                        expirationDate,
                         daysUntilRefresh,
                         cancellationToken);
                     logger.LogInformation("No refresh needed notification email sent successfully");
@@ -60,24 +76,25 @@ public class TokenService(
                     logger.LogError(emailEx, "Failed to send no refresh needed notification email");
                 }
 
-                return TokenRefreshResult.NoRefreshNeeded(expirationDate ?? DateTime.MaxValue);
+                return TokenRefreshResult.NoRefreshNeeded(expirationDate);
             }
 
             logger.LogInformation("Token needs refresh. Proceeding with refresh process");
 
             // Get the latest refresh token from database
-            var refreshToken = await tokenRepository.GetLatestRefreshTokenAsync(cancellationToken);
+            var latestLog = await tokenRepository.GetLatestSuccessfulLogAsync(cancellationToken);
+            var refreshToken = latestLog?.RefreshToken;
 
-            if (string.IsNullOrEmpty(refreshToken))
+            if (string.IsNullOrWhiteSpace(refreshToken))
             {
                 // If no refresh token in database, use initial refresh token from configuration
                 refreshToken = _settings.InitialRefreshToken;
 
-                if (string.IsNullOrEmpty(refreshToken))
+                if (string.IsNullOrWhiteSpace(refreshToken))
                 {
                     var errorMessage = "No refresh token available in database or configuration";
                     logger.LogError("No refresh token available. Cannot proceed with token refresh");
-                    
+
                     // Send error notification
                     try
                     {
@@ -92,11 +109,26 @@ public class TokenService(
                     {
                         logger.LogError(emailEx, "Failed to send error notification email for missing refresh token");
                     }
-                    
+
                     return TokenRefreshResult.Failure(errorMessage);
                 }
 
                 logger.LogWarning("Using initial refresh token from configuration");
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Using refresh token stored by refresh log {LogId} saved at {SavedAt}",
+                    latestLog!.Id,
+                    latestLog.CreatedAt);
+
+                if (latestLog.RefreshTokenExpiresAt is { } storedRefreshTokenExpiry
+                    && storedRefreshTokenExpiry <= DateTime.UtcNow)
+                {
+                    logger.LogError(
+                        "The stored refresh token expired at {RefreshTokenExpiresAt}. The refresh call will most likely be rejected by ANAF",
+                        storedRefreshTokenExpiry);
+                }
             }
 
             // Call ANAF API to refresh token
@@ -111,7 +143,7 @@ public class TokenService(
             {
                 logger.LogError(ex, "Failed to refresh token via ANAF API");
                 apiException = ex;
-                
+
                 // Send error notification for API failure
                 try
                 {
@@ -130,6 +162,53 @@ public class TokenService(
 
             if (tokenResponse != null)
             {
+                var createdAt = DateTime.UtcNow;
+                var expiresAt = createdAt.AddSeconds(tokenResponse.ExpiresIn);
+                var newRefreshToken = ResolveNewRefreshToken(tokenResponse.RefreshToken, refreshToken);
+                var refreshTokenExpiresAt = ResolveRefreshTokenExpiration(
+                    newRefreshToken,
+                    tokenResponse.RefreshTokenExpiresIn,
+                    createdAt);
+
+                var log = new TokenRefreshLog
+                {
+                    RefreshToken = newRefreshToken,
+                    AccessToken = tokenResponse.AccessToken,
+                    ExpiresAt = expiresAt,
+                    RefreshTokenExpiresAt = refreshTokenExpiresAt,
+                    CreatedAt = createdAt,
+                    IsSuccess = true,
+                    ResponseStatusCode = 200
+                };
+
+                // Persist before touching config.ini. ANAF invalidates the previous refresh
+                // token once a rotated one is issued, and the database is the only place the
+                // new one is kept - losing it here would leave the service unable to refresh
+                // ever again, while a stale access token in config.ini is recoverable on the
+                // next run.
+                try
+                {
+                    await tokenRepository.AddTokenRefreshLogAsync(log, cancellationToken);
+                }
+                catch (Exception dbEx)
+                {
+                    logger.LogError(
+                        dbEx,
+                        "Failed to persist the refreshed tokens to the database. Attempting to write the new access token to the config file so the issued token is not wasted");
+
+                    try
+                    {
+                        await configFileService.UpdateAccessTokenAsync(tokenResponse.AccessToken, cancellationToken);
+                        logger.LogWarning("New access token written to the config file, but the rotated refresh token could not be stored");
+                    }
+                    catch (Exception configEx)
+                    {
+                        logger.LogError(configEx, "Failed to write the new access token to the config file after the database error");
+                    }
+
+                    throw;
+                }
+
                 // Create backup of current config.ini
                 await configFileService.CreateBackupAsync(cancellationToken);
                 logger.LogInformation("Config file backed up successfully");
@@ -140,38 +219,10 @@ public class TokenService(
                     cancellationToken);
                 logger.LogInformation("Config file updated with new access token");
 
-                // Calculate expiration dates
-                var createdAt = DateTime.UtcNow;
-                var expiresAt = createdAt.AddSeconds(tokenResponse.ExpiresIn);
-                DateTime? refreshTokenExpiresAt = tokenResponse.RefreshToken.GetExpirationDate();
-
-                if (!refreshTokenExpiresAt.HasValue && tokenResponse.RefreshTokenExpiresIn.HasValue)
-                {
-                    refreshTokenExpiresAt = createdAt.AddSeconds(tokenResponse.RefreshTokenExpiresIn.Value);
-                }
-
-                if (!refreshTokenExpiresAt.HasValue)
-                {
-                    refreshTokenExpiresAt = createdAt.AddDays(365);
-                }
-
-                // Save to database
-                var log = new TokenRefreshLog
-                {
-                    RefreshToken = tokenResponse.RefreshToken,
-                    AccessToken = tokenResponse.AccessToken,
-                    ExpiresAt = expiresAt,
-                    RefreshTokenExpiresAt = refreshTokenExpiresAt,
-                    CreatedAt = createdAt,
-                    IsSuccess = true,
-                    ResponseStatusCode = 200
-                };
-
-                await tokenRepository.AddTokenRefreshLogAsync(log, cancellationToken);
-
                 logger.LogInformation(
-                    "Token refresh completed successfully. New token expires at: {ExpiresAt}",
-                    expiresAt);
+                    "Token refresh completed successfully. New token expires at: {ExpiresAt}, refresh token valid until: {RefreshTokenExpiresAt}",
+                    expiresAt,
+                    refreshTokenExpiresAt);
 
                 // Send success notification
                 try
@@ -199,7 +250,7 @@ public class TokenService(
                     RefreshToken = refreshToken,
                     AccessToken = string.Empty,
                     ExpiresAt = DateTime.UtcNow,
-                    RefreshTokenExpiresAt = refreshToken.GetExpirationDate(),
+                    RefreshTokenExpiresAt = latestLog?.RefreshTokenExpiresAt ?? refreshToken.GetExpirationDate(),
                     CreatedAt = DateTime.UtcNow,
                     IsSuccess = false,
                     ErrorMessage = errorMessage,
@@ -216,7 +267,7 @@ public class TokenService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error in token check and refresh process");
-            
+
             // Send error notification for unexpected errors
             try
             {
@@ -231,8 +282,117 @@ public class TokenService(
             {
                 logger.LogError(emailEx, "Failed to send error notification email for unexpected error");
             }
-            
+
             return TokenRefreshResult.Failure(ex.Message, ex);
         }
+    }
+
+    private string ResolveNewRefreshToken(string? returnedRefreshToken, string usedRefreshToken)
+    {
+        if (string.IsNullOrWhiteSpace(returnedRefreshToken))
+        {
+            logger.LogWarning(
+                "ANAF did not return a refresh token. Keeping the refresh token that was used for this call");
+            return usedRefreshToken;
+        }
+
+        var newRefreshToken = returnedRefreshToken.Trim();
+
+        if (string.Equals(newRefreshToken, usedRefreshToken, StringComparison.Ordinal))
+        {
+            logger.LogWarning("ANAF returned the same refresh token that was sent - no rotation happened");
+        }
+        else
+        {
+            logger.LogInformation("ANAF returned a rotated refresh token. Storing it as the current refresh token");
+        }
+
+        return newRefreshToken;
+    }
+
+    private static DateTime ResolveRefreshTokenExpiration(
+        string refreshToken,
+        int? refreshTokenExpiresIn,
+        DateTime createdAt)
+    {
+        var fromToken = refreshToken.GetExpirationDate();
+
+        if (fromToken.HasValue)
+        {
+            return fromToken.Value;
+        }
+
+        return refreshTokenExpiresIn.HasValue
+            ? createdAt.AddSeconds(refreshTokenExpiresIn.Value)
+            : createdAt.Add(DefaultRefreshTokenLifetime);
+    }
+
+    private async Task LogStoredRefreshTokenHealthAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var latestLog = await tokenRepository.GetLatestSuccessfulLogAsync(cancellationToken);
+
+            if (latestLog is null)
+            {
+                logger.LogWarning(
+                    "No successful refresh is stored in the database yet - the initial refresh token from configuration will be used for the next refresh");
+                return;
+            }
+
+            if (latestLog.RefreshTokenExpiresAt is not { } refreshTokenExpiresAt)
+            {
+                return;
+            }
+
+            var daysLeft = (refreshTokenExpiresAt - DateTime.UtcNow).TotalDays;
+
+            if (daysLeft <= 0)
+            {
+                logger.LogError(
+                    "The stored refresh token expired at {RefreshTokenExpiresAt}. A new authorization is required",
+                    refreshTokenExpiresAt);
+            }
+            else if (daysLeft <= RefreshTokenExpiryWarningDays)
+            {
+                logger.LogWarning(
+                    "The stored refresh token expires at {RefreshTokenExpiresAt} (in {DaysLeft} days)",
+                    refreshTokenExpiresAt,
+                    (int)daysLeft);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Stored refresh token is valid until {RefreshTokenExpiresAt}",
+                    refreshTokenExpiresAt);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to inspect the stored refresh token");
+        }
+    }
+
+    private async Task<TokenRefreshResult> ReportUnreadableAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        const string errorMessage = "The access token in the config file could not be parsed, so its expiration date is unknown";
+
+        logger.LogError(
+            "Access token from {ConfigFilePath} is not a readable JWT. Token expiration cannot be evaluated",
+            _settings.ConfigFilePath);
+
+        try
+        {
+            await emailNotificationService.SendTokenRefreshErrorNotificationAsync(
+                errorMessage,
+                null,
+                cancellationToken);
+        }
+        catch (Exception emailEx)
+        {
+            logger.LogError(emailEx, "Failed to send error notification email for unreadable access token");
+        }
+
+        return TokenRefreshResult.Failure(errorMessage);
     }
 }
