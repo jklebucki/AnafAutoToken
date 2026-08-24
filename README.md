@@ -30,7 +30,6 @@ Projekt wykorzystuje **Clean Architecture** z podziałem na warstwy:
 ```
 AnafAutoToken/
 ├── AnafAutoToken.Worker/       # Entry point, BackgroundService, DI
-├── AnafAutoToken.Exporter/     # CLI exporter for JSON token dumps
 ├── AnafAutoToken.Manager/      # WinForms UI: token viewer + settings editor
 ├── AnafAutoToken.Core/         # Business logic, services, interfaces
 ├── AnafAutoToken.Infrastructure/   # EF Core, HTTP client, repositories
@@ -59,6 +58,35 @@ AnafAutoToken/
 - SDK .NET 10 tylko na maszynie, która buduje paczkę
 - Uprawnienia root (sudo)
 
+## 📁 Katalog danych
+
+Konfiguracja robocza, baza i logi **wszystkich** programów mieszkają w jednym miejscu,
+niezależnym od katalogu instalacji i od katalogu roboczego procesu:
+
+| System | Katalog danych |
+|--------|----------------|
+| Windows | `C:\ProgramData\AnafAutoToken\` |
+| Linux | `/var/lib/anafautotoken/` |
+
+```
+C:\ProgramData\AnafAutoToken\
+├── appsettings.json     konfiguracja robocza - jedyne źródło prawdy
+├── tokens.db            baza SQLite (historia tokenów i przebiegów)
+├── backups\             kopie config.ini
+└── logs\                logi Serilog
+```
+
+Katalog można przenieść zmienną środowiskową `ANAFAUTOTOKEN_DATA_DIR`.
+
+**Pierwsze uruchomienie menedżera zakłada komplet**: podkatalogi, `appsettings.json`
+(na podstawie wzorca z katalogu instalacji albo z domyślnego szablonu) oraz `tokens.db`
+z nałożonymi migracjami. Dzięki temu usługa może wystartować od razu po instalacji.
+Worker robi to samo przy swoim starcie, więc kolejność uruchomienia nie ma znaczenia.
+
+> `appsettings.json` **obok pliku EXE jest wyłącznie wzorcem do zasiania**. Po utworzeniu
+> pliku w katalogu danych plik wdrożeniowy nie jest już czytany - wdrożenie nowej wersji
+> nie nadpisze ustawień i nie przywróci klucza usuniętego w menedżerze.
+
 ## 📦 Publikacja (single file, bez .NET na hoście)
 
 Publikacja jest **self-contained** i **single file**: runtime .NET 10 (dla workera także
@@ -72,7 +100,7 @@ potrzebne wyłącznie tam, gdzie uruchamiasz skrypt publikacji.
 .\scripts\publish-all.ps1
 ```
 
-Skrypt buduje solucję, uruchamia testy jednostkowe, a następnie publikuje wszystkie trzy
+Skrypt buduje solucję, uruchamia testy jednostkowe, a następnie publikuje oba
 programy **do jednego katalogu** `publish\` - dokładnie tak, jak ma wyglądać katalog
 instalacyjny serwisu. Parametry:
 
@@ -90,15 +118,14 @@ instalacyjny serwisu. Parametry:
 ```
 
 Dla runtime'ów innych niż `win-*` menedżer (WinForms) jest pomijany z ostrzeżeniem, a worker
-i eksporter publikują się normalnie. Testy, które nie przejdą, przerywają publikację - chyba
-że użyjesz `-SkipTests`.
+publikuje się normalnie. Testy, które nie przejdą, przerywają publikację - chyba że użyjesz
+`-SkipTests`.
 
 ### Pojedyncze programy
 
 ```powershell
-.\scripts\publish-worker-single-file.ps1      # usługa (publish\AnafAutoToken.Worker)
-.\scripts\publish-exporter-single-file.ps1    # CLI    (publish\AnafAutoToken.Exporter)
-.\scripts\publish-manager-single-file.ps1     # UI     (publish\AnafAutoToken.Manager)
+.\scripts\publish-worker-single-file.ps1     # usługa (publish\AnafAutoToken.Worker)
+.\scripts\publish-manager-single-file.ps1    # UI     (publish\AnafAutoToken.Manager)
 ```
 
 Przyjmują te same parametry `-Configuration`, `-Runtime`, `-OutputPath`:
@@ -115,22 +142,21 @@ Po `publish-all.ps1` katalog wygląda tak:
 ```
 publish\
 ├── AnafAutoToken.Worker.exe        ~52 MB   usługa
-├── AnafAutoToken.Exporter.exe      ~40 MB   CLI
 ├── AnafAutoToken.Manager.exe       ~51 MB   UI
-├── appsettings.json                         konfiguracja (edytowalna)
+├── appsettings.json                         WZORZEC do zasiania katalogu danych
 ├── register_service.bat
 ├── unregister_service.bat
 └── EmailTemplates\                          szablony powiadomień
 ```
 
-Wszystkie trzy programy leżą obok siebie celowo: eksporter i menedżer szukają
-`appsettings.json` oraz `tokens.db` w swoim katalogu, a worker czyta `appsettings.json`
-i `EmailTemplates\` z dysku w czasie działania. Reszta - łącznie z całym runtime'em -
-siedzi wewnątrz plików EXE.
+Konfiguracja robocza i baza **nie** leżą w tym katalogu - powstają w
+[katalogu danych](#-katalog-danych) przy pierwszym uruchomieniu. W katalogu instalacji
+zostaje tylko to, co jest częścią wdrożenia: pliki EXE, wzorzec ustawień, szablony maili
+i skrypty rejestracji usługi.
 
 Pojedyncze skrypty publikują tylko swój program: `publish-worker-single-file.ps1` wnosi EXE
-razem z plikami towarzyszącymi, a `publish-exporter-single-file.ps1` i
-`publish-manager-single-file.ps1` kopiują wyłącznie swój plik EXE.
+razem z plikami towarzyszącymi, a `publish-manager-single-file.ps1` kopiuje wyłącznie
+swój plik EXE.
 
 Instalacja z gotowej paczki, bez SDK na hoście:
 
@@ -226,9 +252,12 @@ Skrypt automatycznie:
 
 ### 1. Edycja `appsettings.json`
 
-Plik znajduje się w katalogu instalacji:
-- **Windows:** `<katalog instalacji>\appsettings.json`
-- **Linux:** `/opt/anafautotoken/appsettings.json`
+Plik roboczy znajduje się w [katalogu danych](#-katalog-danych):
+- **Windows:** `C:\ProgramData\AnafAutoToken\appsettings.json`
+- **Linux:** `/var/lib/anafautotoken/appsettings.json`
+
+Najwygodniej edytować go [menedżerem](#️-menedżer-ui---anafautotokenmanager) - waliduje
+JSON, robi kopię zapasową i zachowuje klucze spoza formularza.
 
 ```json
 {
@@ -328,17 +357,25 @@ Musisz podać początkowy `refresh_token` w `appsettings.json`
 
 ### Harmonogram sprawdzeń:
 
-1. **Sprawdzenie co godzinę** - aplikacja budzi się co godzinę i sprawdza czy jest zaplanowana godzina
-2. **Wykonanie o określonej godzinie** - np. codziennie o 02:00 (wg `CheckSchedule`)
+1. **Tyknięcie co minutę** - worker budzi się co minutę i sprawdza, czy dzisiejszy termin
+   z `CheckSchedule` już minął i czy dziś nie było jeszcze przebiegu
+2. **Nadrabianie** - jeśli usługa wstaje po godzinie sprawdzania, a w bazie nie ma dzisiejszego
+   przebiegu, sprawdzenie wykonuje się od razu (wpis z wyzwalaczem `Startup`). Data ostatniego
+   przebiegu pochodzi z bazy, więc restart nie powoduje powtórki tego samego dnia
 3. **Weryfikacja tokenu JWT** - parsowanie i sprawdzenie daty wygaśnięcia
 4. **Warunek odświeżenia:**
    ```
    Dni do wygaśnięcia ≤ DaysBeforeExpiration (domyślnie 3)
    ```
 5. **Wywołanie ANAF API** - POST z `refresh_token` + Basic Auth
-6. **Backup config.ini** → `bak_config_ini_YYYYMMDD_HHmmss.txt`
-7. **Aktualizacja config.ini** z nowym tokenem
-8. **Zapis do bazy SQLite** - historia odświeżeń
+6. **Zapis do bazy SQLite** - nowy access i refresh token
+7. **Backup config.ini** → `bak_config_ini_YYYYMMDD_HHmmss.txt`
+8. **Aktualizacja config.ini** z nowym tokenem
+9. **Wpis w `TokenCheckLogs`** - powstaje przy **każdym** przebiegu, także takim, który
+   nie wymagał odświeżenia
+
+Ręczne odświeżenie z menedżera i przebieg zaplanowany są zserializowane wspólnym semaforem,
+więc nie mogą się nałożyć.
 
 ### Polityki resilience (Polly):
 
@@ -367,6 +404,26 @@ Tabela: `TokenRefreshLogs`
 | `ResponseStatusCode` | INTEGER | Kod HTTP odpowiedzi ANAF |
 | `CreatedAt` | DATETIME | Timestamp operacji (UTC) |
 
+### Tabela: `TokenCheckLogs`
+
+Ślad po **każdym** przebiegu sprawdzenia - również takim, który nie wymagał odświeżenia.
+Tabela `TokenRefreshLogs` notuje wyłącznie próby odświeżenia, więc przy access tokenie ważnym
+90 dni dostaje wpis mniej więcej raz na 87 dni i sama w sobie nie jest dowodem, że serwis
+w ogóle się uruchamiał.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `Id` | INTEGER | Primary key |
+| `CheckedAt` | DATETIME | Kiedy wykonano sprawdzenie (UTC) |
+| `Outcome` | INTEGER | 0 = nie było potrzebne, 1 = odświeżony, 2 = błąd |
+| `Trigger` | INTEGER | 0 = harmonogram, 1 = ręcznie z menedżera, 2 = start usługi |
+| `AccessTokenExpiresAt` | DATETIME | Data wygaśnięcia access tokenu w chwili sprawdzenia |
+| `RefreshTokenExpiresAt` | DATETIME | Data wygaśnięcia refresh tokenu |
+| `Message` | TEXT | Komunikat (przy błędzie: jego treść) |
+
+Podgląd na zakładce **Historia sprawdzeń** w menedżerze. Pusta tabela oznacza, że serwis
+jeszcze się nie uruchomił - a nie, że nie było czego robić.
+
 ### Rotacja refresh tokenu
 
 ANAF zwraca nowy `refresh_token` przy każdym odświeżeniu. Obowiązują następujące zasady:
@@ -380,17 +437,20 @@ ANAF zwraca nowy `refresh_token` przy każdym odświeżeniu. Obowiązują nastę
 3. Jeśli ANAF nie zwróci pola `refresh_token`, zapisywany jest dotychczasowy token
    (z ostrzeżeniem w logu) zamiast odrzucania całego odświeżenia.
 
-**Lokalizacja:**
-- **Windows:** `<katalog instalacji>\tokens.db`
-- **Linux:** `/opt/anafautotoken/tokens.db`
+**Lokalizacja:** [katalog danych](#-katalog-danych)
+- **Windows:** `C:\ProgramData\AnafAutoToken\tokens.db`
+- **Linux:** `/var/lib/anafautotoken/tokens.db`
+
+Ścieżka względna w `ConnectionStrings:TokenDatabase` jest rozwijana względem katalogu danych,
+nigdy względem katalogu roboczego procesu.
 
 ## 📝 Logi
 
 ### Serilog - dwa sinki:
 
 **1. File Sink** (rolling daily, 30 dni retencji):
-- **Windows:** `logs\anaf-token-refresh-YYYYMMDD.log`
-- **Linux:** `/opt/anafautotoken/logs/anaf-token-refresh-YYYYMMDD.log`
+- **Windows:** `C:\ProgramData\AnafAutoToken\logs\anaf-auto-token-YYYYMMDD.txt`
+- **Linux:** `/var/lib/anafautotoken/logs/anaf-auto-token-YYYYMMDD.txt`
 
 **2. Console Sink** (output format: `[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}`)
 
@@ -473,35 +533,18 @@ dotnet run --project src/AnafAutoToken.Worker
 Albo z gotowej paczki single file:
 
 ```powershell
-.\scripts\publish-worker-single-file.ps1 -OutputPath C:	mpnaf
-C:	mpnaf\AnafAutoToken.Worker.exe
+.\scripts\publish-worker-single-file.ps1 -OutputPath "C:\tmp\anaf"
+C:\tmp\anaf\AnafAutoToken.Worker.exe
 ```
 
-**Uwaga:** Upewnij się, że `appsettings.json`, `config.ini` i katalogi `backups/`, `logs/` istnieją w katalogu roboczym.
-
-## 📤 Eksport tokenów do JSON
-
-W solucji jest też małe narzędzie CLI `AnafAutoToken.Exporter`. Plik EXE należy umieścić w tym samym katalogu co `appsettings.json` i `tokens.db`.
-
-Publikacja (szczegóły w sekcji [Publikacja](#-publikacja-single-file-bez-net-na-hoście)):
+Worker sam założy [katalog danych](#-katalog-danych) i bazę. Do testów na boku ustaw
+`ANAFAUTOTOKEN_DATA_DIR`, żeby nie ruszać konfiguracji produkcyjnej:
 
 ```powershell
-.\scripts\publish-exporter-single-file.ps1 -OutputPath "C:\AnafAutoToken"
+$env:ANAFAUTOTOKEN_DATA_DIR = "C:\tmp\anaf-test"
 ```
 
-Skrypt publikuje do katalogu tymczasowego i do folderu docelowego kopiuje tylko finalny, samowystarczalny `AnafAutoToken.Exporter.exe`.
-
-Dostępne opcje:
-
-```powershell
-AnafAutoToken.Exporter.exe -ect
-AnafAutoToken.Exporter.exe -eat
-AnafAutoToken.Exporter.exe -h
-```
-
-- `-ect` eksportuje aktualny `access_token` i `refresh_token` do timestampowanego pliku JSON
-- `-eat` eksportuje wszystkie poprawnie zapisane pary tokenów z SQLite do timestampowanego pliku JSON
-- `-h` wyświetla pomoc po angielsku
+**Uwaga:** `config.ini` wskazany w `Anaf:ConfigFilePath` musi istnieć.
 
 ## 🌐 API workera
 
@@ -541,14 +584,20 @@ Okienkowa (WinForms, Windows-only) nakładka na to samo `appsettings.json` i `to
 którymi posługuje się serwis. Uruchamiana niezależnie od serwisu - nie trzeba go zatrzymywać,
 żeby zajrzeć do bazy.
 
+**Pierwsze uruchomienie** zakłada wszystko, czego potrzebuje komplet: katalog danych
+z podkatalogami `backups\` i `logs\`, `appsettings.json` (z wzorca obok pliku EXE albo
+z domyślnego szablonu) oraz `tokens.db` z nałożonymi migracjami. Pasek stanu wypisuje,
+co dokładnie powstało.
+
 Publikacja jako pojedynczy, samowystarczalny plik EXE:
 
 ```powershell
 .\scripts\publish-manager-single-file.ps1 -OutputPath "C:\AnafAutoToken"
 ```
 
-Po starcie program szuka `appsettings.json` obok siebie, a ścieżkę do bazy bierze z
-`ConnectionStrings:TokenDatabase`. Obie ścieżki można też wskazać ręcznie.
+Program pracuje na plikach z [katalogu danych](#-katalog-danych); ścieżkę do bazy bierze
+z `ConnectionStrings:TokenDatabase`. Obie ścieżki można wskazać ręcznie, jeśli trzeba
+zajrzeć do innej instalacji.
 
 **Zakładka „Baza danych”**
 - pełna historia `TokenRefreshLogs` (najnowsze na górze) wraz z datami wygaśnięcia obu tokenów
@@ -556,6 +605,12 @@ Po starcie program szuka `appsettings.json` obok siebie, a ścieżkę do bazy bi
 - pełna treść access i refresh tokenu zaznaczonego wpisu
 - kopiowanie do schowka: sam token, zaznaczony wpis jako JSON, cała historia jako JSON
 - zapis całej historii do pliku JSON
+
+**Zakładka „Historia sprawdzeń”**
+- zawartość `TokenCheckLogs` - każdy przebieg sprawdzenia z wynikiem i wyzwalaczem
+- podsumowanie: liczba przebiegów, odświeżeń i błędów oraz kiedy było ostatnie sprawdzenie
+- kopiowanie całej historii do schowka jako CSV
+- to jest miejsce, w którym widać, czy serwis w ogóle chodzi
 
 **Zakładka „Serwis systemowy”** (tylko Windows)
 - stan usługi odświeżany **co 5 sekund**: `DZIAŁA` / `ZATRZYMANY` / `NIE ZAREJESTROWANY`
@@ -601,10 +656,8 @@ obok pliku i **zachowuje klucze, których nie ma w formularzu**.
 
 > ⚠️ Serwis czyta ustawienia przy starcie - po zapisie zrestartuj usługę
 > (najprościej przyciskiem **Restartuj** na zakładce „Serwis systemowy”).
-> Jeśli serwis jest zainstalowany w `Program Files`, uruchom menedżera jako Administrator.
-> W repozytorium `appsettings.json` w katalogu `src\AnafAutoToken.Worker` jest nadpisywany
-> przy każdym buildzie przez `appsettings.secrets.json` - menedżer służy do edycji pliku
-> **w katalogu instalacyjnym**, nie w źródłach.
+> Zapis do `C:\ProgramData\AnafAutoToken\` wymaga uprawnień do tego katalogu -
+> jeśli ich brak, uruchom menedżera jako Administrator.
 
 ## 🔧 Troubleshooting
 
@@ -616,6 +669,28 @@ obok pliku i **zachowuje klucze, których nie ma w formularzu**.
 3. Logi startowe:
    - **Windows:** Event Viewer → Windows Logs → Application
    - **Linux:** `journalctl -u anaf-auto-token -n 100`
+
+### Problem: Baza jest pusta / historia się nie zapełnia
+
+**Sprawdź kolejno:**
+1. Zakładka **Historia sprawdzeń** w menedżerze - pusta oznacza, że worker nie wykonał
+   ani jednego przebiegu
+2. `C:\ProgramData\AnafAutoToken\logs\anaf-auto-token-*.txt` - czy usługa w ogóle wstaje
+3. Czy w logu jest linia `Data directory:` i `Token database:` - pokazują, z czego faktycznie
+   korzysta proces
+4. Czy istnieje `C:\Windows\System32\tokens.db` - jego obecność oznacza starą wersję, która
+   zakładała bazę w katalogu roboczym usługi; historię z niego trzeba przenieść ręcznie
+
+> `TokenRefreshLogs` zapełnia się **tylko przy próbach odświeżenia**, czyli mniej więcej raz
+> na 87 dni. Do sprawdzenia, czy serwis żyje, służy `TokenCheckLogs`.
+
+### Problem: Usługa jest „Uruchomiona”, ale nic nie robi
+
+Starsze wersje czytały `appsettings.json` z katalogu roboczego procesu. Usługa Windows startuje
+z `C:\Windows\System32`, więc konfiguracja bywała pusta, a worker przewracał się na
+`NullReferenceException` przy pierwszym tyknięciu harmonogramu. Od tej wersji konfiguracja
+pochodzi z [katalogu danych](#-katalog-danych), a brak wymaganych sekcji zatrzymuje start
+usługi z czytelnym komunikatem zamiast cichego crash-loopu.
 
 ### Problem: Token nie jest odświeżany
 
