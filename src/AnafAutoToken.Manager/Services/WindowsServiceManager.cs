@@ -61,7 +61,12 @@ internal static class WindowsServiceManager
     {
         if (!File.Exists(binaryPath))
         {
-            throw new FileNotFoundException($"Nie znaleziono pliku wykonywalnego: {binaryPath}", binaryPath);
+            throw new FileNotFoundException(
+                $"Nie znaleziono pliku wykonywalnego: {binaryPath}{Environment.NewLine}{Environment.NewLine}"
+                + "AnafAutoToken.Worker.exe powinien leżeć w tym samym katalogu co menedżer. "
+                + "Jeśli trzymasz go gdzie indziej, wskaż go przyciskiem obok pola "
+                + "„Plik wykonywalny workera”.",
+                binaryPath);
         }
 
         RunServiceControl(
