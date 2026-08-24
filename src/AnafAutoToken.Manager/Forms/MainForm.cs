@@ -1,4 +1,6 @@
+using AnafAutoToken.Infrastructure.Data;
 using AnafAutoToken.Manager.Configuration;
+using AnafAutoToken.Shared.Configuration;
 
 namespace AnafAutoToken.Manager.Forms;
 
@@ -36,6 +38,7 @@ internal sealed partial class MainForm : Form
         _tabs.Dock = DockStyle.Fill;
         _tabs.Padding = new Point(12, 6);
         _tabs.TabPages.Add(BuildDatabaseTab());
+        _tabs.TabPages.Add(BuildChecksTab());
         _tabs.TabPages.Add(BuildServiceTab());
         _tabs.TabPages.Add(BuildSettingsTab());
         _tabs.TabPages.Add(BuildRawJsonTab());
@@ -111,26 +114,65 @@ internal sealed partial class MainForm : Form
             // Window too small for the requested split - the default position is fine.
         }
 
-        _settingsPathBox.Text = ResolveDefaultSettingsPath();
+        var bootstrapMessage = await BootstrapDataDirectoryAsync();
 
-        if (File.Exists(_settingsPathBox.Text))
-        {
-            LoadSettings(_settingsPathBox.Text);
-        }
-        else
-        {
-            _settingsPathBox.Text = string.Empty;
-            ApplyConfiguredDatabasePath();
-            SetStatus(
-                "Nie znaleziono pliku appsettings.json obok programu. Wskaż plik ustawień serwisu i kliknij Wczytaj.",
-                isWarning: true);
-        }
-
+        LoadSettings(AppPaths.SettingsFile);
         InitialiseServiceTab();
 
         if (File.Exists(_databasePathBox.Text))
         {
             await ReloadDatabaseAsync();
+        }
+
+        // Komunikat bootstrapu pokazujemy tylko wtedy, gdy faktycznie coś powstało -
+        // w kolejnych uruchomieniach ciekawsze jest podsumowanie wczytanych danych.
+        if (bootstrapMessage is not null)
+        {
+            SetStatus(bootstrapMessage);
+        }
+    }
+
+    /// <summary>
+    /// Pierwsze uruchomienie menedżera zakłada komplet potrzebnych rzeczy w katalogu
+    /// danych: podkatalogi, appsettings.json i bazę z nałożonymi migracjami. Dzięki temu
+    /// usługa może wystartować od razu po instalacji, bez ręcznego przygotowywania plików.
+    /// </summary>
+    private async Task<string?> BootstrapDataDirectoryAsync()
+    {
+        try
+        {
+            var bootstrap = AppDataBootstrapper.Ensure();
+            var createdDatabase = !File.Exists(AppPaths.DatabaseFile);
+
+            await TokenDatabase.EnsureCreatedAsync(AppPaths.DefaultConnectionString);
+
+            var created = new List<string>();
+
+            if (bootstrap.CreatedDataDirectory)
+            {
+                created.Add("katalog danych");
+            }
+
+            if (bootstrap.CreatedSettingsFile)
+            {
+                created.Add(bootstrap.SeededFrom is null
+                    ? "appsettings.json (z domyślnego wzorca)"
+                    : "appsettings.json (na podstawie pliku z katalogu programu)");
+            }
+
+            if (createdDatabase)
+            {
+                created.Add("tokens.db");
+            }
+
+            return created.Count == 0
+                ? null
+                : $"Przygotowano w {AppPaths.DataDirectory}: {string.Join(", ", created)}.";
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Nie udało się przygotować katalogu danych {AppPaths.DataDirectory}", ex);
+            return null;
         }
     }
 
@@ -143,17 +185,6 @@ internal sealed partial class MainForm : Form
         }
 
         base.Dispose(disposing);
-    }
-
-    private static string ResolveDefaultSettingsPath()
-    {
-        string[] candidates =
-        [
-            Path.Combine(AppContext.BaseDirectory, "appsettings.json"),
-            Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json")
-        ];
-
-        return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
     }
 
     private void BrowseForSettingsFile()

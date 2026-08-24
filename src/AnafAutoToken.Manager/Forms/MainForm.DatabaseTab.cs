@@ -1,5 +1,7 @@
 using System.Text.Json;
+using AnafAutoToken.Infrastructure.Data;
 using AnafAutoToken.Manager.Data;
+using AnafAutoToken.Shared.Configuration;
 
 namespace AnafAutoToken.Manager.Forms;
 
@@ -214,10 +216,11 @@ internal sealed partial class MainForm
 
     private void ApplyConfiguredDatabasePath()
     {
+        // Ta sama reguła co w workerze: ścieżka względna rozwija się względem katalogu
+        // danych, nigdy względem katalogu roboczego procesu.
         var connectionString = _document.GetString("ConnectionStrings", TokenDatabaseConnectionKey);
-        var settingsDirectory = SafeGetDirectory(_settingsPathBox.Text) ?? AppContext.BaseDirectory;
 
-        _databasePathBox.Text = TokenDatabaseReader.ResolveDatabasePath(connectionString, settingsDirectory);
+        _databasePathBox.Text = TokenDatabase.ResolveDatabasePath(connectionString);
     }
 
     private void BrowseForDatabaseFile()
@@ -256,6 +259,7 @@ internal sealed partial class MainForm
         {
             UseWaitCursor = true;
             _rows = await TokenDatabaseReader.ReadAllAsync(path);
+            ApplyCheckRows(await TokenDatabaseReader.ReadChecksAsync(path));
 
             _grid.DataSource = _rows.Select(TokenGridRow.From).ToList();
             UpdateSummary();
@@ -270,13 +274,14 @@ internal sealed partial class MainForm
 
             ShowSelectedRowDetails();
 
-            SetStatus($"Wczytano {_rows.Count} wpisów z {path}.");
+            SetStatus($"Wczytano {_rows.Count} tokenów i {_checkRows.Count} przebiegów z {path}.");
         }
         catch (Exception ex)
         {
             _rows = [];
             _grid.DataSource = null;
             _summaryLabel.Text = "Brak wczytanych danych.";
+            ApplyCheckRows([]);
             ShowError("Nie udało się odczytać bazy danych", ex);
         }
         finally
