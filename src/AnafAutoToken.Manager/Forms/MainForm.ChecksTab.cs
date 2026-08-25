@@ -42,22 +42,15 @@ internal sealed partial class MainForm
         _checksSummaryLabel.TextAlign = ContentAlignment.MiddleLeft;
         _checksSummaryLabel.Text = "Brak wczytanych danych.";
 
-        var copyButton = new Button { Text = "Kopiuj historię (CSV)", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
-        var refreshButton = new Button { Text = "Odśwież", AutoSize = true };
+        var copyButton = new Button { Text = "Kopiuj historię (CSV)" };
+        var refreshButton = new Button { Text = "Odśwież" };
 
         copyButton.Click += (_, _) => CopyChecksAsCsv();
         refreshButton.Click += async (_, _) => await ReloadDatabaseAsync();
 
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            FlowDirection = FlowDirection.LeftToRight,
-            AutoSize = true,
-            Padding = new Padding(0, 6, 0, 0)
-        };
-
-        buttons.Controls.Add(copyButton);
-        buttons.Controls.Add(refreshButton);
+        var buttons = CreateActionBar(copyButton, refreshButton);
+        buttons.Dock = DockStyle.Bottom;
+        buttons.Height = ActionBarHeight;
 
         page.Controls.Add(_checksGrid);
         page.Controls.Add(buttons);

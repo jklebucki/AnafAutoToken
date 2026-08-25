@@ -144,28 +144,18 @@ internal sealed partial class MainForm
         copyAccessButton.Click += (_, _) => CopyToClipboard(_accessTokenBox.Text, "access token");
         copyRefreshButton.Click += (_, _) => CopyToClipboard(_refreshTokenBox.Text, "refresh token");
 
-        var manualTokenButton = new Button { Text = "Wprowadź aktualne tokeny", AutoSize = true, Margin = new Padding(0, 0, 16, 0) };
-        var copyRowButton = new Button { Text = "Kopiuj zaznaczony wpis (JSON)", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
-        var copyAllButton = new Button { Text = "Kopiuj całą historię (JSON)", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
-        var saveJsonButton = new Button { Text = "Zapisz historię do pliku…", AutoSize = true };
+        var manualTokenButton = new Button { Text = "Wprowadź aktualne tokeny" };
+        var copyRowButton = new Button { Text = "Kopiuj zaznaczony wpis (JSON)" };
+        var copyAllButton = new Button { Text = "Kopiuj całą historię (JSON)" };
+        var saveJsonButton = new Button { Text = "Zapisz historię do pliku…" };
 
         manualTokenButton.Click += async (_, _) => await EnterTokensManuallyAsync();
         copyRowButton.Click += (_, _) => CopySelectedRowAsJson();
         copyAllButton.Click += (_, _) => CopyAllRowsAsJson();
         saveJsonButton.Click += (_, _) => SaveHistoryToFile();
 
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-            AutoSize = true
-        };
-
-        buttons.Controls.Add(manualTokenButton);
-        buttons.Controls.Add(copyRowButton);
-        buttons.Controls.Add(copyAllButton);
-        buttons.Controls.Add(saveJsonButton);
+        var buttons = CreateActionBar(manualTokenButton, copyRowButton, copyAllButton, saveJsonButton);
+        buttons.Dock = DockStyle.Fill;
 
         var layout = new TableLayoutPanel
         {
@@ -181,7 +171,7 @@ internal sealed partial class MainForm
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30f));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ActionBarHeight));
 
         layout.Controls.Add(CreateSectionLabel("Access token"), 0, 0);
         layout.Controls.Add(copyAccessButton, 1, 0);

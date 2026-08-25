@@ -276,6 +276,56 @@ internal sealed partial class MainForm : Form
         }
     }
 
+    private const int ActionButtonWidth = 200;
+    private const int ActionButtonHeight = 30;
+    private const int ActionButtonSpacing = 8;
+    private const int ActionBarTopPadding = 8;
+
+    /// <summary>Wysokość paska akcji - taka sama na każdej zakładce.</summary>
+    private static int ActionBarHeight => ActionButtonHeight + ActionBarTopPadding;
+
+    /// <summary>
+    /// Pasek akcji osadzony na siatce o stałych komórkach. Każdy przycisk dostaje tę samą
+    /// szerokość i odstęp, więc dolne krawędzie zakładek wyglądają identycznie niezależnie
+    /// od długości etykiet. Ostatnia kolumna wchłania resztę szerokości, żeby przyciski
+    /// trzymały się lewej także po rozciągnięciu okna.
+    /// </summary>
+    private static TableLayoutPanel CreateActionBar(params Button[] buttons)
+    {
+        // Stała szerokość ustępuje tylko wtedy, gdy etykieta by się nie zmieściła -
+        // przy większym DPI albo innym rozmiarze czcionki systemowej.
+        var buttonWidth = Math.Max(
+            ActionButtonWidth,
+            buttons.Max(button => button.PreferredSize.Width + 2 * ActionButtonSpacing));
+
+        var bar = new TableLayoutPanel
+        {
+            ColumnCount = buttons.Length + 1,
+            RowCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0),
+            Padding = new Padding(0, ActionBarTopPadding, 0, 0)
+        };
+
+        bar.RowStyles.Add(new RowStyle(SizeType.Absolute, ActionButtonHeight));
+
+        for (var index = 0; index < buttons.Length; index++)
+        {
+            var button = buttons[index];
+            button.AutoSize = false;
+            button.Dock = DockStyle.Fill;
+            button.Margin = new Padding(0, 0, ActionButtonSpacing, 0);
+
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, buttonWidth + ActionButtonSpacing));
+            bar.Controls.Add(button, index, 0);
+        }
+
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+
+        return bar;
+    }
+
     private static string? SafeGetDirectory(string path)
     {
         try
