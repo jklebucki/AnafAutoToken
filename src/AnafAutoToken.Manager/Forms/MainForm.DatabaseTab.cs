@@ -111,6 +111,7 @@ internal sealed partial class MainForm
         AddGridColumn("Id", nameof(TokenGridRow.Id), 40);
         AddGridColumn("Zapisano (UTC)", nameof(TokenGridRow.SavedAt), 130);
         AddGridColumn("Status", nameof(TokenGridRow.Status), 60);
+        AddGridColumn("Odświeżenie", nameof(TokenGridRow.RefreshMode), 80);
         AddGridColumn("Access token wygasa", nameof(TokenGridRow.AccessTokenExpiresAt), 130);
         AddGridColumn("Refresh token wygasa", nameof(TokenGridRow.RefreshTokenExpiresAt), 130);
         AddGridColumn("Access token", nameof(TokenGridRow.AccessTokenPreview), 150);
@@ -143,10 +144,12 @@ internal sealed partial class MainForm
         copyAccessButton.Click += (_, _) => CopyToClipboard(_accessTokenBox.Text, "access token");
         copyRefreshButton.Click += (_, _) => CopyToClipboard(_refreshTokenBox.Text, "refresh token");
 
+        var manualTokenButton = new Button { Text = "Wprowadź aktualne tokeny", AutoSize = true, Margin = new Padding(0, 0, 16, 0) };
         var copyRowButton = new Button { Text = "Kopiuj zaznaczony wpis (JSON)", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
         var copyAllButton = new Button { Text = "Kopiuj całą historię (JSON)", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
         var saveJsonButton = new Button { Text = "Zapisz historię do pliku…", AutoSize = true };
 
+        manualTokenButton.Click += async (_, _) => await EnterTokensManuallyAsync();
         copyRowButton.Click += (_, _) => CopySelectedRowAsJson();
         copyAllButton.Click += (_, _) => CopyAllRowsAsJson();
         saveJsonButton.Click += (_, _) => SaveHistoryToFile();
@@ -159,6 +162,7 @@ internal sealed partial class MainForm
             AutoSize = true
         };
 
+        buttons.Controls.Add(manualTokenButton);
         buttons.Controls.Add(copyRowButton);
         buttons.Controls.Add(copyAllButton);
         buttons.Controls.Add(saveJsonButton);
@@ -328,6 +332,63 @@ internal sealed partial class MainForm
         return null;
     }
 
+    /// <summary>
+    /// Wklejona para trafia do bazy jako wpis oznaczony „Ręczne”. Od tej chwili serwis
+    /// bierze z niej refresh token - jest najnowszym udanym wpisem.
+    /// </summary>
+    private async Task EnterTokensManuallyAsync()
+    {
+        using var dialog = new ManualTokenDialog();
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            SetStatus("Wprowadzanie tokenów anulowane.");
+            return;
+        }
+
+        try
+        {
+            UseWaitCursor = true;
+
+            var connectionString = _document.GetString("ConnectionStrings", TokenDatabaseConnectionKey);
+
+            var id = await TokenDatabase.AddManualTokenPairAsync(
+                connectionString,
+                dialog.AccessToken,
+                dialog.RefreshToken,
+                dialog.AccessTokenExpiresAt,
+                dialog.RefreshTokenExpiresAt ?? DateTime.UtcNow.AddDays(365));
+
+            await ReloadDatabaseAsync();
+            SelectRowById(id);
+
+            SetStatus($"Zapisano ręcznie wprowadzoną parę tokenów jako wpis #{id}.");
+        }
+        catch (Exception ex)
+        {
+            ShowError("Nie udało się zapisać wprowadzonych tokenów", ex);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
+    private void SelectRowById(int id)
+    {
+        foreach (DataGridViewRow gridRow in _grid.Rows)
+        {
+            if (gridRow.DataBoundItem is TokenGridRow row && row.Id == id)
+            {
+                _grid.ClearSelection();
+                _grid.CurrentCell = gridRow.Cells[0];
+                gridRow.Selected = true;
+                ShowSelectedRowDetails();
+                return;
+            }
+        }
+    }
+
     private void CopySelectedRowAsJson()
     {
         var row = SelectedRow();
@@ -404,7 +465,8 @@ internal sealed partial class MainForm
         row.RefreshToken,
         RefreshTokenExpiresAt = row.RefreshTokenExpiresAt,
         row.ResponseStatusCode,
-        row.ErrorMessage
+        row.ErrorMessage,
+        Odswiezenie = row.RefreshMode
     };
 
     private static string FormatDate(DateTime? value) =>

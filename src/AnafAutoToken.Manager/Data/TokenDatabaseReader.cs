@@ -30,10 +30,14 @@ internal static class TokenDatabaseReader
         await connection.OpenAsync(cancellationToken);
 
         var hasRefreshTokenExpiresAt = await HasColumnAsync(connection, "RefreshTokenExpiresAt", cancellationToken);
+        var hasRefreshMode = await HasColumnAsync(connection, "Odswiezenie", cancellationToken);
 
         var refreshTokenExpiresAtColumn = hasRefreshTokenExpiresAt
             ? "RefreshTokenExpiresAt"
             : "NULL AS RefreshTokenExpiresAt";
+
+        // Baza sprzed tej kolumny zawiera wylacznie wpisy z automatu.
+        var refreshModeColumn = hasRefreshMode ? "Odswiezenie" : "'Auto' AS Odswiezenie";
 
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
@@ -45,7 +49,8 @@ internal static class TokenDatabaseReader
                    CreatedAt,
                    IsSuccess,
                    ErrorMessage,
-                   ResponseStatusCode
+                   ResponseStatusCode,
+                   {refreshModeColumn}
             FROM TokenRefreshLogs
             ORDER BY CreatedAt DESC, Id DESC
             """;
@@ -67,7 +72,8 @@ internal static class TokenDatabaseReader
                 CreatedAt: reader.GetDateTime(5),
                 IsSuccess: reader.GetBoolean(6),
                 ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7),
-                ResponseStatusCode: reader.IsDBNull(8) ? null : reader.GetInt32(8)));
+                ResponseStatusCode: reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                RefreshMode: reader.IsDBNull(9) ? "Auto" : reader.GetString(9)));
         }
 
         return rows;
@@ -159,7 +165,8 @@ internal sealed record TokenLogRow(
     DateTime CreatedAt,
     bool IsSuccess,
     string? ErrorMessage,
-    int? ResponseStatusCode)
+    int? ResponseStatusCode,
+    string RefreshMode)
 {
     /// <summary>Expiration read from the access token itself, not from the stored column.</summary>
     public DateTime? AccessTokenExpiresAt =>

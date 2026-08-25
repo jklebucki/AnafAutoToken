@@ -19,6 +19,8 @@ internal sealed class TokenGridRow
 
     public string Status => Source.Status;
 
+    public string RefreshMode => Source.RefreshMode;
+
     public string AccessTokenExpiresAt => Format(Source.AccessTokenExpiresAt ?? Source.ExpiresAt);
 
     public string RefreshTokenExpiresAt => Format(Source.RefreshTokenExpiresAt);
