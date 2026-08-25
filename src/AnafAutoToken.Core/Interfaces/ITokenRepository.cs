@@ -23,6 +23,19 @@ public class TokenRefreshLog
     public required bool IsSuccess { get; set; }
     public string? ErrorMessage { get; set; }
     public int? ResponseStatusCode { get; set; }
+
+    /// <summary>
+    /// Skąd wziął się ten wpis: z automatycznego odświeżenia przez serwis, czy z pary
+    /// wklejonej ręcznie w menedżerze. W bazie to kolumna <c>Odswiezenie</c>
+    /// z wartościami "Auto" / "Ręczne".
+    /// </summary>
+    public TokenRefreshMode RefreshMode { get; set; } = TokenRefreshMode.Auto;
+}
+
+public enum TokenRefreshMode
+{
+    Auto = 0,
+    Manual = 1
 }
 
 /// <summary>

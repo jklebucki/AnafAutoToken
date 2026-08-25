@@ -1,3 +1,4 @@
+using AnafAutoToken.Core.Interfaces;
 using AnafAutoToken.Shared.Configuration;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -41,6 +42,44 @@ public static class TokenDatabase
 
     public static string ResolveDatabasePath(string? connectionString) =>
         new SqliteConnectionStringBuilder(ResolveConnectionString(connectionString)).DataSource;
+
+    /// <summary>
+    /// Dopisuje parę tokenów wprowadzoną ręcznie w menedżerze. Wiersz wygląda jak udane
+    /// odświeżenie, bo dokładnie tym jest z punktu widzenia serwisu - różni go wyłącznie
+    /// kolumna <c>Odswiezenie</c> = "Ręczne".
+    /// </summary>
+    public static async Task<int> AddManualTokenPairAsync(
+        string? connectionString,
+        string accessToken,
+        string refreshToken,
+        DateTime accessTokenExpiresAt,
+        DateTime? refreshTokenExpiresAt,
+        CancellationToken cancellationToken = default)
+    {
+        var options = new DbContextOptionsBuilder<AnafDbContext>()
+            .UseSqlite(ResolveConnectionString(connectionString))
+            .Options;
+
+        await using var context = new AnafDbContext(options);
+        await context.Database.MigrateAsync(cancellationToken);
+
+        var log = new TokenRefreshLog
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresAt = accessTokenExpiresAt,
+            RefreshTokenExpiresAt = refreshTokenExpiresAt,
+            CreatedAt = DateTime.UtcNow,
+            IsSuccess = true,
+            ResponseStatusCode = null,
+            RefreshMode = TokenRefreshMode.Manual
+        };
+
+        context.TokenRefreshLogs.Add(log);
+        await context.SaveChangesAsync(cancellationToken);
+
+        return log.Id;
+    }
 
     /// <summary>Tworzy katalog bazy i nakłada migracje. Idempotentne.</summary>
     public static async Task<string> EnsureCreatedAsync(

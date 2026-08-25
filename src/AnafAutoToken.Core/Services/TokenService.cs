@@ -203,7 +203,8 @@ public class TokenService(
                     RefreshTokenExpiresAt = refreshTokenExpiresAt,
                     CreatedAt = createdAt,
                     IsSuccess = true,
-                    ResponseStatusCode = 200
+                    ResponseStatusCode = 200,
+                    RefreshMode = TokenRefreshMode.Auto
                 };
 
                 // Persist before touching config.ini. ANAF invalidates the previous refresh
@@ -287,7 +288,8 @@ public class TokenService(
                     CreatedAt = DateTime.UtcNow,
                     IsSuccess = false,
                     ErrorMessage = errorMessage,
-                    ResponseStatusCode = null
+                    ResponseStatusCode = null,
+                    RefreshMode = TokenRefreshMode.Auto
                 };
 
                 await tokenRepository.AddTokenRefreshLogAsync(failedLog, cancellationToken);

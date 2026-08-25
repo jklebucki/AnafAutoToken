@@ -39,6 +39,16 @@ public class AnafDbContext(DbContextOptions<AnafDbContext> options) : DbContext(
             entity.Property(e => e.ErrorMessage)
                 .HasMaxLength(1000);
 
+            // Kolumna trzyma czytelny tekst, a nie liczbę - operator zagląda do tej bazy
+            // wprost, więc "Auto" / "Ręczne" jest tu więcej warte niż 0 / 1.
+            entity.Property(e => e.RefreshMode)
+                .HasColumnName("Odswiezenie")
+                .IsRequired()
+                .HasMaxLength(10)
+                .HasConversion(
+                    mode => mode == TokenRefreshMode.Manual ? "Ręczne" : "Auto",
+                    value => value == "Ręczne" ? TokenRefreshMode.Manual : TokenRefreshMode.Auto);
+
             entity.HasIndex(e => e.CreatedAt)
                 .HasDatabaseName("IX_TokenRefreshLogs_CreatedAt");
         });
