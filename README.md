@@ -373,6 +373,10 @@ Musisz podać początkowy `refresh_token` w `appsettings.json`
    ```
    Dni do wygaśnięcia ≤ DaysBeforeExpiration (domyślnie 3)
    ```
+   Warunek obowiązuje tak samo przy przebiegu z harmonogramu, przy nadrabianiu po starcie
+   usługi i przy ręcznym wywołaniu z menedżera. Jeśli access token jest ważny dłużej niż
+   `DaysBeforeExpiration`, ANAF **nie jest odpytywany** - powstaje wyłącznie wpis
+   `NoRefreshNeeded` w `TokenCheckLogs`.
 5. **Wywołanie ANAF API** - POST z `refresh_token` + Basic Auth
 6. **Zapis do bazy SQLite** - nowy access i refresh token
 7. **Backup config.ini** → `bak_config_ini_YYYYMMDD_HHmmss.txt`
@@ -409,6 +413,7 @@ Tabela: `TokenRefreshLogs`
 | `ErrorMessage` | TEXT | Komunikat błędu (jeśli failed) |
 | `ResponseStatusCode` | INTEGER | Kod HTTP odpowiedzi ANAF |
 | `CreatedAt` | DATETIME | Timestamp operacji (UTC) |
+| `Odswiezenie` | TEXT | `Auto` - odświeżył serwis, `Ręczne` - para wklejona w menedżerze |
 
 ### Tabela: `TokenCheckLogs`
 
@@ -442,6 +447,22 @@ ANAF zwraca nowy `refresh_token` przy każdym odświeżeniu. Obowiązują nastę
    token w `config.ini` naprawi się przy kolejnym przebiegu.
 3. Jeśli ANAF nie zwróci pola `refresh_token`, zapisywany jest dotychczasowy token
    (z ostrzeżeniem w logu) zamiast odrzucania całego odświeżenia.
+
+### Ręczne wprowadzenie pary tokenów
+
+Przycisk **Wprowadź aktualne tokeny** na zakładce „Baza danych" otwiera okno, w którym
+wkleja się aktualną parę - przydatne po ponownej autoryzacji w ANAF albo gdy zapisany
+refresh token przestał działać.
+
+- okno na bieżąco pokazuje datę wygaśnięcia odczytaną z access tokenu i ostrzega, jeśli
+  token już wygasł albo nie jest czytelnym JWT
+- zapis tworzy w `TokenRefreshLogs` wpis wyglądający jak udane odświeżenie, z kolumną
+  `Odswiezenie` = `Ręczne`; staje się on najnowszym udanym wpisem, więc serwis użyje tego
+  refresh tokenu przy następnym odświeżeniu
+- data wygaśnięcia refresh tokenu jest odczytywana z tokenu, a gdy się nie da - przyjmowany
+  jest rok od dziś
+- `config.ini` **nie jest zmieniany**. Serwis czyta stamtąd access token tylko po to, żeby
+  policzyć termin odświeżenia, i sam nadpisze plik przy najbliższym udanym odświeżeniu
 
 ### Archiwum odpowiedzi ANAF
 
@@ -623,6 +644,8 @@ zajrzeć do innej instalacji.
 - pełna historia `TokenRefreshLogs` (najnowsze na górze) wraz z datami wygaśnięcia obu tokenów
 - podsumowanie, z którego wpisu pochodzi refresh token używany przy następnym odświeżeniu
 - pełna treść access i refresh tokenu zaznaczonego wpisu
+- kolumna **Odświeżenie** rozróżnia wpisy z automatu (`Auto`) i wklejone ręcznie (`Ręczne`)
+- przycisk **Wprowadź aktualne tokeny** - patrz [Ręczne wprowadzenie pary tokenów](#ręczne-wprowadzenie-pary-tokenów)
 - kopiowanie do schowka: sam token, zaznaczony wpis jako JSON, cała historia jako JSON
 - zapis całej historii do pliku JSON
 
