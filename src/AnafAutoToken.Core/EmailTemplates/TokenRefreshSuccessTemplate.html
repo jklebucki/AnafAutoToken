@@ -1,15 +1,88 @@
 <!DOCTYPE html>
 <html lang="pl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>ANAF Token — token zaktualizowany</title>
 </head>
-<body>
-    <h2>Token ANAF został pomyślnie zaktualizowany</h2>
-    <p>Data i czas aktualizacji: <strong>{0}</strong></p>
-    <p>Nowa data wygaśnięcia tokena: <strong>{1}</strong></p>
-    <p><strong>Uwaga:</strong> Zrestartuj serwis Apache, aby zmiany zostały zastosowane.</p>
-    <hr />
-    <p><em>Wiadomość wygenerowana automatycznie przez ANAF Auto Token Service</em></p>
+
+<body style="margin:0; padding:0; background-color:#eef1f5;">
+    <div style="display:none; max-height:0; overflow:hidden; font-size:1px; line-height:1px; color:#eef1f5;">
+        Token ANAF został odświeżony. Nowa ważność: {1}.
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background-color:#eef1f5;">
+        <tr>
+            <td align="center" style="padding:24px 12px;">
+
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
+                       style="width:600px; max-width:600px; background-color:#ffffff; border:1px solid #d8dee6; border-top:4px solid #1b7f4f;">
+
+                    <tr>
+                        <td style="background-color:#e9f6ef; padding:20px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+                            <div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#5b6875;">
+                                ANAF Auto Token
+                            </div>
+                            <div style="font-size:20px; font-weight:bold; color:#1b7f4f; padding-top:6px;">
+                                Token został zaktualizowany
+                            </div>
+                            <div style="padding-top:10px;">
+                                <span style="display:inline-block; background-color:#1b7f4f; color:#ffffff; font-size:11px; font-weight:bold; letter-spacing:0.5px; padding:4px 10px; border-radius:12px;">
+                                    ODŚWIEŻONY
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:24px 28px 4px 28px; font-family:'Segoe UI',Arial,sans-serif; font-size:14px; color:#1f2933;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="padding:10px 0; border-bottom:1px solid #eceff3; color:#5b6875;">
+                                        Data i czas aktualizacji
+                                    </td>
+                                    <td align="right" style="padding:10px 0; border-bottom:1px solid #eceff3; font-weight:bold; color:#1f2933;">
+                                        {0}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:10px 0; border-bottom:1px solid #eceff3; color:#5b6875;">
+                                        Nowa data wygaśnięcia tokena
+                                    </td>
+                                    <td align="right" style="padding:10px 0; border-bottom:1px solid #eceff3; font-weight:bold; color:#1b7f4f;">
+                                        {1}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:20px 28px 24px 28px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="background-color:#f2faf6; border-left:4px solid #1b7f4f; padding:14px 16px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; line-height:1.6; color:#1f2933;">
+                                        <strong>Do wykonania:</strong> zrestartuj serwis Apache, aby zmiany zostały zastosowane.
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:16px 28px; background-color:#f7f9fb; border-top:1px solid #eceff3; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; line-height:1.5; color:#7b8794;">
+                            Wiadomość wygenerowana automatycznie przez <strong>ANAF Auto Token Service</strong>.
+                        </td>
+                    </tr>
+
+                </table>
+
+            </td>
+        </tr>
+    </table>
 </body>
+
 </html>

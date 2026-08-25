@@ -5,11 +5,15 @@ using System.IO;
 using System.Net;
 using System.Net.Mail;
 using System.Reflection;
+using System.Text;
 
 namespace AnafAutoToken.Core.Services;
 
 public class EmailNotificationService : IEmailNotificationService
 {
+    private const string DetailsSectionStart = "<!--SZCZEGOLY_START-->";
+    private const string DetailsSectionEnd = "<!--SZCZEGOLY_END-->";
+
     private readonly EmailSettings? _emailSettings;
     private readonly ILogger<EmailNotificationService> _logger;
     private readonly string _templatesPath;
@@ -54,15 +58,13 @@ public class EmailNotificationService : IEmailNotificationService
         }
 
         var subject = "ANAF Token - Błąd aktualizacji tokena";
-        var exceptionDetails = exception != null
-            ? $"{exception.GetType().FullName}: {exception.Message}{exception.StackTrace}{exception.InnerException?.Message}"
-            : string.Empty;
 
-        var template = LoadTemplate("TokenRefreshErrorTemplate");
+        var template = ApplyExceptionDetails(LoadTemplate("TokenRefreshErrorTemplate"), exception);
         var body = template
             .Replace("{0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
-            .Replace("{1}", errorMessage)
-            .Replace("{2}", exceptionDetails);
+            // Komunikaty ANAF bywają fragmentami JSON-a, a wyjątki niosą nazwy typów
+            // generycznych - bez kodowania rozjechałyby układ wiadomości.
+            .Replace("{1}", WebUtility.HtmlEncode(errorMessage));
 
         await SendEmailAsync(subject, body, cancellationToken);
     }
@@ -86,6 +88,53 @@ public class EmailNotificationService : IEmailNotificationService
             .Replace("{2}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
 
         await SendEmailAsync(subject, body, cancellationToken);
+    }
+
+    /// <summary>
+    /// Wypełnia sekcję ze szczegółami technicznymi albo usuwa ją w całości, gdy nie ma
+    /// wyjątku - pusta ramka w wiadomości tylko myli odbiorcę.
+    /// </summary>
+    internal static string ApplyExceptionDetails(string template, Exception? exception)
+    {
+        if (exception is null)
+        {
+            return RemoveSection(template, DetailsSectionStart, DetailsSectionEnd);
+        }
+
+        var details = new StringBuilder()
+            .Append(exception.GetType().FullName)
+            .Append(": ")
+            .AppendLine(exception.Message);
+
+        if (exception.InnerException is { } inner)
+        {
+            details
+                .AppendLine()
+                .Append("Wyjątek wewnętrzny: ")
+                .Append(inner.GetType().FullName)
+                .Append(": ")
+                .AppendLine(inner.Message);
+        }
+
+        if (!string.IsNullOrWhiteSpace(exception.StackTrace))
+        {
+            details.AppendLine().AppendLine(exception.StackTrace.Trim());
+        }
+
+        return template.Replace("{2}", WebUtility.HtmlEncode(details.ToString().TrimEnd()));
+    }
+
+    internal static string RemoveSection(string template, string start, string end)
+    {
+        var startIndex = template.IndexOf(start, StringComparison.Ordinal);
+        var endIndex = template.IndexOf(end, StringComparison.Ordinal);
+
+        if (startIndex < 0 || endIndex < startIndex)
+        {
+            return template;
+        }
+
+        return template.Remove(startIndex, endIndex - startIndex + end.Length);
     }
 
     private bool IsEmailConfigured()

@@ -4,22 +4,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        .error {
-            color: red;
-        }
-    </style>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>ANAF Token — błąd aktualizacji</title>
 </head>
 
-<body>
-    <h2 class="error">Wystąpił błąd podczas aktualizacji tokena ANAF</h2>
-    <p>Data i czas błędu: <strong>{0}</strong></p>
-    <h3>Komunikat błędu:</h3>
-    <p class="error">{1}</p>
-    {2}
-    <hr />
-    <p><strong>Wymagana jest natychmiastowa interwencja!</strong></p>
-    <p><em>Wiadomość wygenerowana automatycznie przez ANAF Auto Token Service</em></p>
+<body style="margin:0; padding:0; background-color:#f5eeee;">
+    <div style="display:none; max-height:0; overflow:hidden; font-size:1px; line-height:1px; color:#f5eeee;">
+        Błąd aktualizacji tokena ANAF ({0}). Wymagana interwencja.
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="background-color:#f5eeee;">
+        <tr>
+            <td align="center" style="padding:24px 12px;">
+
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
+                       style="width:600px; max-width:600px; background-color:#ffffff; border:1px solid #e6c9c5; border-top:4px solid #c0392b;">
+
+                    <tr>
+                        <td style="background-color:#fdecea; padding:20px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+                            <div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#8a5b56;">
+                                ANAF Auto Token
+                            </div>
+                            <div style="font-size:20px; font-weight:bold; color:#c0392b; padding-top:6px;">
+                                Błąd aktualizacji tokena
+                            </div>
+                            <div style="padding-top:10px;">
+                                <span style="display:inline-block; background-color:#c0392b; color:#ffffff; font-size:11px; font-weight:bold; letter-spacing:0.5px; padding:4px 10px; border-radius:12px;">
+                                    BŁĄD
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:24px 28px 4px 28px; font-family:'Segoe UI',Arial,sans-serif; font-size:14px; color:#1f2933;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="padding:10px 0; border-bottom:1px solid #f3e3e1; color:#5b6875;">
+                                        Data i czas błędu
+                                    </td>
+                                    <td align="right" style="padding:10px 0; border-bottom:1px solid #f3e3e1; font-weight:bold; color:#c0392b;">
+                                        {0}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:16px 28px 0 28px; font-family:'Segoe UI',Arial,sans-serif;">
+                            <div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#5b6875; padding-bottom:8px;">
+                                Komunikat błędu
+                            </div>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="background-color:#fdf3f2; border:1px solid #f0d4d0; padding:14px 16px; font-family:Consolas,'Courier New',monospace; font-size:12px; line-height:1.6; color:#8a2a20; word-break:break-word;">
+                                        {1}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!--SZCZEGOLY_START-->
+                    <tr>
+                        <td style="padding:16px 28px 0 28px; font-family:'Segoe UI',Arial,sans-serif;">
+                            <div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#5b6875; padding-bottom:8px;">
+                                Szczegóły techniczne
+                            </div>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="background-color:#f7f9fb; border:1px solid #e2e7ed; padding:14px 16px; font-family:Consolas,'Courier New',monospace; font-size:11px; line-height:1.5; color:#3c4a57; white-space:pre-wrap; word-break:break-word;">{2}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <!--SZCZEGOLY_END-->
+
+                    <tr>
+                        <td style="padding:20px 28px 24px 28px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td style="background-color:#fdf3f2; border-left:4px solid #c0392b; padding:14px 16px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; line-height:1.6; color:#1f2933;">
+                                        <strong style="color:#c0392b;">Wymagana natychmiastowa interwencja.</strong><br>
+                                        Sprawdź logi serwisu oraz zakładkę „Historia sprawdzeń” w menedżerze. Jeśli refresh
+                                        token przestał działać, wprowadź aktualną parę tokenów przyciskiem
+                                        „Wprowadź aktualne tokeny”.
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:16px 28px; background-color:#f7f9fb; border-top:1px solid #eceff3; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; line-height:1.5; color:#7b8794;">
+                            Wiadomość wygenerowana automatycznie przez <strong>ANAF Auto Token Service</strong>.
+                        </td>
+                    </tr>
+
+                </table>
+
+            </td>
+        </tr>
+    </table>
 </body>
 
 </html>
