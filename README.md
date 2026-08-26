@@ -589,7 +589,8 @@ $env:ANAFAUTOTOKEN_DATA_DIR = "C:\tmp\anaf-test"
 
 ## 🌐 API workera
 
-Worker wystawia minimalne API pod adresem z `Api:Url` (domyślnie `http://127.0.0.1:5099`):
+Worker wystawia minimalne API pod adresem z `Api:Url` (domyślnie `http://0.0.0.0:5099`,
+czyli **wszystkie interfejsy** na porcie 5099):
 
 | Metoda | Ścieżka | Opis |
 |--------|---------|------|
@@ -614,10 +615,58 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5099/api/tokens/refresh"
 }
 ```
 
-> ⚠️ Oba endpointy są nieuwierzytelnione, a `GET` zwraca tokeny w postaci jawnej.
-> Domyślne `Api:Url` wiąże nasłuch do pętli zwrotnej (`127.0.0.1`) i tak powinno zostać.
-> Nie ustawiaj `0.0.0.0` ani adresu zewnętrznego bez postawienia przed workerem
-> uwierzytelnionego proxy.
+### Adres nasłuchu
+
+| Wartość `Api:Url` | Zasięg |
+|---|---|
+| `http://0.0.0.0:5099` | wszystkie interfejsy IPv4 (domyślnie) |
+| `http://127.0.0.1:5099` | wyłącznie ta maszyna |
+| `http://192.168.1.10:5099` | jeden wskazany interfejs |
+
+Nie używaj `http://*:5099` ani `http://+:5099` - Kestrel je rozumie, ale nie parsują się jako
+`Uri`, więc menedżer nie złoży z nich adresu żądania przy ręcznym odświeżaniu.
+
+### Dozwolone sieci
+
+`Api:AllowedNetworks` to lista sieci w notacji CIDR, którym wolno wołać API. Żądanie
+z innego adresu dostaje **HTTP 403** i wpis ostrzeżenia w logu:
+
+```json
+"Api": {
+  "Url": "http://0.0.0.0:5099",
+  "AllowedNetworks": [ "192.168.21.0/24", "100.100.0.0/24", "192.168.29.0/24" ]
+}
+```
+
+- **pętla zwrotna jest dozwolona zawsze**, niezależnie od listy - inaczej menedżer nie mógłby
+  wywołać ręcznego odświeżenia na tej samej maszynie
+- **pusta lista albo brak klucza = dostęp wyłącznie z tej maszyny**. Pusta lista nigdy nie
+  znaczy „wpuszczaj wszystkich"
+- wpis bez maski (`192.168.21.7`) traktowany jest jako pojedynczy host
+- maski nie muszą kończyć się na granicy bajtu - `/20` czy `/28` działają
+- wpisy, których nie da się sparsować, są pomijane i zgłaszane w logu jako `ERROR`; zły wpis
+  nie otwiera dostępu
+- edycja w menedżerze: zakładka **Konfiguracja**, pole **Dozwolone sieci API (CIDR, jedna na wiersz)**
+
+Filtr działa po adresie źródłowym połączenia. Za reverse proxy worker zobaczy adres proxy,
+nie klienta - w takim układzie ogranicz dostęp na proxy.
+
+Druga warstwa, niezależna od aplikacji, to reguła zapory Windows:
+
+```powershell
+New-NetFirewallRule -DisplayName "AnafAutoToken API" -Direction Inbound -Protocol TCP -LocalPort 5099 -Action Allow -RemoteAddress 192.168.21.0/24,100.100.0.0/24,192.168.29.0/24
+```
+
+> ⚠️ **Oba endpointy są nieuwierzytelnione**, a `GET /api/tokens/current` zwraca access
+> i refresh token w postaci jawnej. `Api:AllowedNetworks` filtruje po adresie źródłowym, ale
+> nie zastępuje uwierzytelniania - każdy host z dozwolonej sieci odczyta tokeny i może
+> wymusić rotację. Przy wystawianiu poza zaufaną sieć postaw przed workerem proxy
+> z uwierzytelnianiem. Worker zapisuje przy starcie do logu, na czym nasłuchuje i które
+> sieci przepuszcza.
+>
+> Zmiana domyślnej wartości dotyczy **wyłącznie nowych instalacji**. Istniejące
+> `C:\ProgramData\AnafAutoTokenppsettings.json` zachowuje swój `Api:Url` - popraw go
+> w menedżerze (zakładka „Konfiguracja”, pole „Adres API workera”) i zrestartuj usługę.
 
 ## 🖥️ Menedżer (UI) - `AnafAutoToken.Manager`
 
