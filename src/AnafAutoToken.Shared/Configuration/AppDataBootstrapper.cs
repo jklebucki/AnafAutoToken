@@ -86,7 +86,9 @@ public static class AppDataBootstrapper
         },
         ["Api"] = new JsonObject
         {
-            ["Url"] = "http://127.0.0.1:5099"
+            // 0.0.0.0 = wszystkie interfejsy. Gwiazdka i plus tez oznaczaja "dowolny adres",
+            // ale nie parsuja sie jako Uri, wiec menedzer nie zlozylby z nich adresu zadania.
+            ["Url"] = "http://0.0.0.0:5099"
         },
         ["Logging"] = new JsonObject
         {

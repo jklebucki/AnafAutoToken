@@ -81,8 +81,9 @@ try
     builder.Services.AddSerilog();
 
     // Configure API host
-    var apiUrl = builder.Configuration["Api:Url"] ?? "http://127.0.0.1:5099";
+    var apiUrl = builder.Configuration["Api:Url"] ?? "http://0.0.0.0:5099";
     builder.WebHost.UseUrls(apiUrl);
+    WarnWhenApiIsReachableFromTheNetwork(apiUrl);
 
     // Configure AnafSettings. Walidacja na starcie zamienia ciche NullReference
     // przy pierwszym tyknięciu harmonogramu na czytelny błąd startu usługi.
@@ -242,6 +243,37 @@ catch (Exception ex)
 finally
 {
     await Log.CloseAndFlushAsync();
+}
+
+/// <summary>
+/// API nie ma uwierzytelnienia, a GET /api/tokens/current zwraca tokeny jawnym tekstem.
+/// Nasluch poza petla zwrotna jest swiadoma decyzja operatora, ale musi zostawic slad w logu.
+/// </summary>
+static void WarnWhenApiIsReachableFromTheNetwork(string apiUrl)
+{
+    var hosts = apiUrl
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(address => Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : null)
+        .Where(host => host is not null)
+        .ToList();
+
+    var exposed = hosts
+        .Where(host => !string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+                       && host != "127.0.0.1"
+                       && host != "[::1]"
+                       && host != "::1")
+        .ToList();
+
+    if (exposed.Count == 0)
+    {
+        Log.Information("API listens on {ApiUrl} (loopback only)", apiUrl);
+        return;
+    }
+
+    Log.Warning(
+        "API listens on {ApiUrl} and is reachable from the network. Both endpoints are unauthenticated "
+        + "and /api/tokens/current returns tokens in clear text - restrict access with a firewall rule",
+        apiUrl);
 }
 
 static async Task<CurrentTokenExportFile> BuildCurrentTokenExportAsync(
