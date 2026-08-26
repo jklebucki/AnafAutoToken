@@ -88,7 +88,9 @@ public static class AppDataBootstrapper
         {
             // 0.0.0.0 = wszystkie interfejsy. Gwiazdka i plus tez oznaczaja "dowolny adres",
             // ale nie parsuja sie jako Uri, wiec menedzer nie zlozylby z nich adresu zadania.
-            ["Url"] = "http://0.0.0.0:5099"
+            ["Url"] = "http://0.0.0.0:5099",
+            // Pusta lista = dostep wylacznie z tej maszyny. Petla zwrotna jest dozwolona zawsze.
+            ["AllowedNetworks"] = new JsonArray("192.168.21.0/24", "100.100.0.0/24", "192.168.29.0/24")
         },
         ["Logging"] = new JsonObject
         {

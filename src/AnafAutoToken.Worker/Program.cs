@@ -5,6 +5,7 @@ using AnafAutoToken.Infrastructure.Data;
 using AnafAutoToken.Shared.Configuration;
 using AnafAutoToken.Shared.Extensions;
 using AnafAutoToken.Shared.Models;
+using AnafAutoToken.Shared.Networking;
 using AnafAutoToken.Worker;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -83,7 +84,11 @@ try
     // Configure API host
     var apiUrl = builder.Configuration["Api:Url"] ?? "http://0.0.0.0:5099";
     builder.WebHost.UseUrls(apiUrl);
-    WarnWhenApiIsReachableFromTheNetwork(apiUrl);
+
+    var accessPolicy = NetworkAccessPolicy.Create(
+        builder.Configuration.GetSection("Api:AllowedNetworks").Get<string[]>());
+
+    WarnWhenApiIsReachableFromTheNetwork(apiUrl, accessPolicy);
 
     // Configure AnafSettings. Walidacja na starcie zamienia ciche NullReference
     // przy pierwszym tyknięciu harmonogramu na czytelny błąd startu usługi.
@@ -137,6 +142,27 @@ try
     }
 
     var app = builder.Build();
+
+    // Filtr adresu źródłowego przed czymkolwiek innym - endpointy nie mają
+    // uwierzytelnienia, a GET zwraca tokeny jawnym tekstem.
+    app.Use(async (context, next) =>
+    {
+        var remoteIp = context.Connection.RemoteIpAddress;
+
+        if (!accessPolicy.IsAllowed(remoteIp))
+        {
+            Log.Warning(
+                "Rejected {Method} {Path} from {RemoteIp} - address is outside the allowed networks",
+                context.Request.Method,
+                context.Request.Path.Value,
+                remoteIp?.ToString() ?? "nieznany adres");
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
+        await next();
+    });
 
     app.MapGet("/api/tokens/current", async (
         IServiceScopeFactory serviceScopeFactory,
@@ -249,8 +275,26 @@ finally
 /// API nie ma uwierzytelnienia, a GET /api/tokens/current zwraca tokeny jawnym tekstem.
 /// Nasluch poza petla zwrotna jest swiadoma decyzja operatora, ale musi zostawic slad w logu.
 /// </summary>
-static void WarnWhenApiIsReachableFromTheNetwork(string apiUrl)
+static void WarnWhenApiIsReachableFromTheNetwork(string apiUrl, NetworkAccessPolicy accessPolicy)
 {
+    if (accessPolicy.InvalidEntries.Count > 0)
+    {
+        Log.Error(
+            "Api:AllowedNetworks contains entries that could not be parsed and will be ignored: {InvalidEntries}",
+            string.Join(", ", accessPolicy.InvalidEntries));
+    }
+
+    if (accessPolicy.AllowsOnlyLoopback)
+    {
+        Log.Information("API accepts requests from this machine only (Api:AllowedNetworks is empty)");
+    }
+    else
+    {
+        Log.Information(
+            "API accepts requests from loopback and {AllowedNetworks}",
+            string.Join(", ", accessPolicy.AllowedNetworks));
+    }
+
     var hosts = apiUrl
         .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .Select(address => Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : null)
@@ -272,7 +316,7 @@ static void WarnWhenApiIsReachableFromTheNetwork(string apiUrl)
 
     Log.Warning(
         "API listens on {ApiUrl} and is reachable from the network. Both endpoints are unauthenticated "
-        + "and /api/tokens/current returns tokens in clear text - restrict access with a firewall rule",
+        + "and /api/tokens/current returns tokens in clear text - a firewall rule is the second line of defence",
         apiUrl);
 }
 

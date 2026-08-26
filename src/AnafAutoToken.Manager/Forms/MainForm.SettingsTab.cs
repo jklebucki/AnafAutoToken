@@ -30,6 +30,7 @@ internal sealed partial class MainForm
 
     private readonly TextBox _connectionStringBox = new();
     private readonly TextBox _apiUrlBox = new();
+    private readonly TextBox _apiAllowedNetworksBox = new() { Multiline = true, ScrollBars = ScrollBars.Vertical };
 
     private readonly ComboBox _logDefaultCombo = CreateLogLevelCombo();
     private readonly ComboBox _logHostingLifetimeCombo = CreateLogLevelCombo();
@@ -120,6 +121,7 @@ internal sealed partial class MainForm
 
         AddField(table, "Connection string bazy", _connectionStringBox);
         AddField(table, "Adres API workera", _apiUrlBox);
+        AddField(table, "Dozwolone sieci API (CIDR, jedna na wiersz)", _apiAllowedNetworksBox, height: 70);
         AddField(table, "Log - poziom domyślny", _logDefaultCombo);
         AddField(table, "Log - Microsoft.Hosting.Lifetime", _logHostingLifetimeCombo);
         AddField(table, "Log - Microsoft.EntityFrameworkCore", _logEfCoreCombo);
@@ -207,6 +209,7 @@ internal sealed partial class MainForm
 
         _connectionStringBox.Text = _document.GetString("ConnectionStrings", TokenDatabaseConnectionKey) ?? string.Empty;
         _apiUrlBox.Text = _document.GetString("Api", "Url") ?? string.Empty;
+        _apiAllowedNetworksBox.Lines = _document.GetStringArray("Api", "AllowedNetworks").ToArray();
 
         _logDefaultCombo.Text = _document.GetString("Logging", "LogLevel", "Default") ?? "Information";
         _logHostingLifetimeCombo.Text = _document.GetString("Logging", "LogLevel", "Microsoft.Hosting.Lifetime") ?? "Information";
@@ -238,6 +241,7 @@ internal sealed partial class MainForm
 
         _document.SetString(_connectionStringBox.Text.Trim(), "ConnectionStrings", TokenDatabaseConnectionKey);
         _document.SetString(_apiUrlBox.Text.Trim(), "Api", "Url");
+        _document.SetStringArray(_apiAllowedNetworksBox.Lines, "Api", "AllowedNetworks");
 
         _document.SetString(_logDefaultCombo.Text.Trim(), "Logging", "LogLevel", "Default");
         _document.SetString(_logHostingLifetimeCombo.Text.Trim(), "Logging", "LogLevel", "Microsoft.Hosting.Lifetime");
