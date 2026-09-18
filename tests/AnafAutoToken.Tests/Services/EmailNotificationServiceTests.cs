@@ -45,7 +45,7 @@ public class EmailNotificationServiceTests : IDisposable
         };
 
         _settingsMock.Setup(s => s.Value).Returns(settings);
-        return new EmailNotificationService(_settingsMock.Object, _loggerMock.Object);
+        return new EmailNotificationService(_settingsMock.Object, Mock.Of<IEmailOutbox>(), _loggerMock.Object);
     }
 
     private void SetupTemplateDirectory(EmailNotificationService service)

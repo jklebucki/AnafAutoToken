@@ -80,7 +80,7 @@ public class TokenService(
                         expirationDate,
                         daysUntilRefresh,
                         cancellationToken);
-                    logger.LogInformation("No refresh needed notification email sent successfully");
+                    logger.LogInformation("No refresh needed notification email queued");
                 }
                 catch (Exception emailEx)
                 {
@@ -114,7 +114,7 @@ public class TokenService(
                             errorMessage,
                             null,
                             cancellationToken);
-                        logger.LogInformation("Error notification email sent successfully");
+                        logger.LogInformation("Error notification email queued");
                     }
                     catch (Exception emailEx)
                     {
@@ -171,7 +171,7 @@ public class TokenService(
                         "Failed to refresh token via ANAF API",
                         ex,
                         cancellationToken);
-                    logger.LogInformation("Error notification email sent successfully");
+                    logger.LogInformation("Error notification email queued");
                 }
                 catch (Exception emailEx)
                 {
@@ -257,7 +257,7 @@ public class TokenService(
                     await emailNotificationService.SendTokenRefreshSuccessNotificationAsync(
                         expiresAt,
                         cancellationToken);
-                    logger.LogInformation("Success notification email sent successfully");
+                    logger.LogInformation("Success notification email queued");
                 }
                 catch (Exception emailEx)
                 {
@@ -319,7 +319,7 @@ public class TokenService(
                     "Unexpected error in token check and refresh process",
                     ex,
                     cancellationToken);
-                logger.LogInformation("Error notification email sent successfully");
+                logger.LogInformation("Error notification email queued");
             }
             catch (Exception emailEx)
             {

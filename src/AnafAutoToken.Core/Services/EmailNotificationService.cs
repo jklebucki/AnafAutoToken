@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.IO;
 using System.Net;
-using System.Net.Mail;
 using System.Reflection;
 using System.Text;
 
@@ -15,26 +14,29 @@ public class EmailNotificationService : IEmailNotificationService
     private const string DetailsSectionEnd = "<!--SZCZEGOLY_END-->";
 
     private readonly EmailSettings? _emailSettings;
+    private readonly IEmailOutbox _emailOutbox;
     private readonly ILogger<EmailNotificationService> _logger;
     private readonly string _templatesPath;
 
     public EmailNotificationService(
         IOptions<AnafSettings> settings,
+        IEmailOutbox emailOutbox,
         ILogger<EmailNotificationService> logger)
     {
         _emailSettings = settings.Value.Email;
+        _emailOutbox = emailOutbox;
         _logger = logger;
         _templatesPath = Path.Combine(AppContext.BaseDirectory, "EmailTemplates");
     }
 
-    public async Task SendTokenRefreshSuccessNotificationAsync(
+    public Task SendTokenRefreshSuccessNotificationAsync(
         DateTime newExpirationDate,
         CancellationToken cancellationToken = default)
     {
         if (!IsEmailConfigured())
         {
             _logger.LogDebug("Email notifications are not configured. Skipping success notification.");
-            return;
+            return Task.CompletedTask;
         }
 
         var subject = "ANAF Token - Pomyślna aktualizacja tokena";
@@ -43,10 +45,11 @@ public class EmailNotificationService : IEmailNotificationService
             .Replace("{0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
             .Replace("{1}", newExpirationDate.ToString("yyyy-MM-dd HH:mm:ss"));
 
-        await SendEmailAsync(subject, body, cancellationToken);
+        Enqueue(subject, body);
+        return Task.CompletedTask;
     }
 
-    public async Task SendTokenRefreshErrorNotificationAsync(
+    public Task SendTokenRefreshErrorNotificationAsync(
         string errorMessage,
         Exception? exception = null,
         CancellationToken cancellationToken = default)
@@ -54,7 +57,7 @@ public class EmailNotificationService : IEmailNotificationService
         if (!IsEmailConfigured())
         {
             _logger.LogDebug("Email notifications are not configured. Skipping error notification.");
-            return;
+            return Task.CompletedTask;
         }
 
         var subject = "ANAF Token - Błąd aktualizacji tokena";
@@ -66,10 +69,11 @@ public class EmailNotificationService : IEmailNotificationService
             // generycznych - bez kodowania rozjechałyby układ wiadomości.
             .Replace("{1}", WebUtility.HtmlEncode(errorMessage));
 
-        await SendEmailAsync(subject, body, cancellationToken);
+        Enqueue(subject, body);
+        return Task.CompletedTask;
     }
 
-    public async Task SendTokenNoRefreshNeededNotificationAsync(
+    public Task SendTokenNoRefreshNeededNotificationAsync(
         DateTime expirationDate,
         int daysUntilRefresh,
         CancellationToken cancellationToken = default)
@@ -77,7 +81,7 @@ public class EmailNotificationService : IEmailNotificationService
         if (!IsEmailConfigured())
         {
             _logger.LogDebug("Email notifications are not configured. Skipping no-refresh-needed notification.");
-            return;
+            return Task.CompletedTask;
         }
 
         var subject = "ANAF Token - Token nie wymaga odświeżenia";
@@ -87,7 +91,8 @@ public class EmailNotificationService : IEmailNotificationService
             .Replace("{1}", daysUntilRefresh.ToString())
             .Replace("{2}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
 
-        await SendEmailAsync(subject, body, cancellationToken);
+        Enqueue(subject, body);
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -145,35 +150,10 @@ public class EmailNotificationService : IEmailNotificationService
             && _emailSettings.ToAddresses?.Length > 0;
     }
 
-    private async Task SendEmailAsync(string subject, string body, CancellationToken cancellationToken)
+    private void Enqueue(string subject, string body)
     {
-        if (_emailSettings == null)
-        {
-            _logger.LogWarning("Email settings are null. Cannot send email with subject: {Subject}", subject);
-            throw new InvalidOperationException("Email settings are not configured");
-        }
-
-        using var smtpClient = new SmtpClient(_emailSettings.SmtpServer, _emailSettings.SmtpPort)
-        {
-            Credentials = new NetworkCredential(_emailSettings.Username, _emailSettings.Password),
-            EnableSsl = _emailSettings.EnableSsl
-        };
-
-        using var mailMessage = new MailMessage
-        {
-            From = new MailAddress(_emailSettings.FromAddress, _emailSettings.FromName),
-            Subject = subject,
-            Body = body,
-            IsBodyHtml = true
-        };
-
-        foreach (var toAddress in _emailSettings.ToAddresses)
-        {
-            mailMessage.To.Add(toAddress);
-        }
-
-        await smtpClient.SendMailAsync(mailMessage, cancellationToken);
-        _logger.LogInformation("Email notification sent successfully. Subject: {Subject}", subject);
+        _emailOutbox.Enqueue(new EmailMessage(subject, body));
+        _logger.LogInformation("Email notification queued for delivery. Subject: {Subject}", subject);
     }
 
     private string LoadTemplate(string templateName)
