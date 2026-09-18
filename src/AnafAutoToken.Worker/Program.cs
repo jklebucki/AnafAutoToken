@@ -113,6 +113,9 @@ try
     builder.Services.AddScoped<ITokenValidationService, TokenValidationService>();
     builder.Services.AddScoped<IConfigFileService, ConfigFileService>();
     builder.Services.AddScoped<IEmailNotificationService, EmailNotificationService>();
+    builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+    builder.Services.AddSingleton<EmailOutbox>();
+    builder.Services.AddSingleton<IEmailOutbox>(sp => sp.GetRequiredService<EmailOutbox>());
     builder.Services.AddScoped<IRefreshResponseArchive, RefreshResponseArchive>();
 
     // Add Infrastructure
@@ -125,6 +128,7 @@ try
     // Add Worker
     builder.Services.AddSingleton<TokenRefreshCoordinator>();
     builder.Services.AddHostedService<Worker>();
+    builder.Services.AddHostedService<EmailDeliveryService>();
 
     // Configure Windows Service (optional)
     if (OperatingSystem.IsWindows())
